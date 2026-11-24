@@ -1,0 +1,13 @@
+FINANZE - STORICO DELLE VERSIONI
+
+Accanto a ogni versione è indicato se va aggiornato anche lo script su Google (Code.gs).
+
+1.0 (24/11/2026)
+- Prima versione, nata dal file Gestione finanziaria e da Money Manager.
+- Patrimonio: valore complessivo con grafico che si allunga da solo, divisione tra depositi, titoli, fondo pensione e liquidità.
+- Investimenti: titoli con quote e carico calcolati dagli acquisti, depositi con interessi netti, fondo pensione anno per anno, ribilanciamento, fondo di emergenza.
+- Prezzi a mano oppure da Google Finance, anche ogni sera in automatico se attivi l'aggiornamento nello script.
+- Movimenti: entrate e uscite con categoria, sottocategoria, conto, valuta e nota; nuove categorie e conti direttamente dal modulo.
+- Statistiche per mese, anno e dall'inizio, con dettaglio per categoria.
+- Import dei movimenti nuovi dall'Excel di Money Manager, Excel completo, foglio Google di riepilogo, backup settimanali.
+- Script Google: nuovo (Code.gs).
