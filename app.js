@@ -3,7 +3,7 @@
    Investments follow the logic of the "Gestione finanziaria" workbook; income and expenses follow Money Manager. */
 
 // ---------------------------------------------------------------- config & state
-const VERSION = "1.1";
+const VERSION = "1.2";
 const LS = { cfg: "fin.cfg", cache: "fin.cache", pref: "fin.pref" };
 const TEST = window.FIN_TEST || null;
 const ART = !TEST && !!window.FIN_ART; // version opened inside claude.ai: data in the page's private store instead of Google Drive
@@ -566,6 +566,10 @@ ROUTES.movimenti = () => {
 };
 
 ROUTES.home = (...a) => ROUTES.movimenti(...a);
+// shortcuts of the installed app (long press on the icon): open straight on a new movement
+const quickAdd = t => { setTimeout(() => { history.replaceState(null, "", "#home"); movForm(null, { t }); }, 60); return ROUTES.movimenti(); };
+ROUTES.nuovo = () => quickAdd("u");
+ROUTES["nuova-entrata"] = () => quickAdd("e");
 ROUTES.mmese = ym => { MS.ym = ym; history.replaceState(null, "", "#home"); return ROUTES.movimenti(); };
 
 // ---------------------------------------------------------------- Statistiche

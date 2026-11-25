@@ -1,6 +1,6 @@
 # Finanze: guida per iniziare
 
-Versione della guida: 1.1. Vale per l'app 1.1 e per lo script `Code.gs` 1.1.
+Versione della guida: 1.2. Vale per l'app 1.2 e per lo script `Code.gs` 1.1.
 
 Questa guida è scritta per essere seguita da una persona oppure da un assistente AI che aiuta una persona. Ogni passaggio dice cosa fare, cosa si deve vedere alla fine e cosa fare se non succede. I nomi dei pulsanti sono scritti come compaiono sullo schermo, in italiano e, tra parentesi, in inglese, perché Google può mostrare l'una o l'altra lingua.
 
@@ -104,6 +104,8 @@ L'app funziona anche nel browser, ma installata si apre come un'app normale, a s
 - **Android:** apri l'indirizzo con **Chrome**. Vai nell'app in **Impostazioni** e tocca **Installa l'app su questo dispositivo**. Se il pulsante non c'è, usa il menu ⋮ di Chrome, poi **Aggiungi a schermata Home** (Add to Home screen) e **Installa** (Install).
 - **Mac:** con **Safari** apri l'indirizzo, poi menu **File**, **Aggiungi al Dock** (Add to Dock).
 - **Windows o Chrome sul computer:** apri l'indirizzo con Chrome o Edge e tocca l'icona di installazione nella barra dell'indirizzo.
+
+**Scorciatoie su Android:** tieni premuta l'icona dell'app installata: compaiono **Nuova uscita**, **Nuova entrata**, **Statistiche** e **Patrimonio**. Tenendo premuta una scorciatoia e trascinandola puoi metterla nella schermata Home come icona a sé: per esempio un tasto che apre subito il modulo di una nuova uscita. Un widget vero, con i numeri sulla schermata Home, non si può fare con un'app web come questa: le scorciatoie sono la cosa più vicina. Su iPhone le scorciatoie non ci sono.
 
 ## Come è fatta l'app
 
