@@ -1,7 +1,7 @@
 // Network first for the app's own files (so a new deploy shows up at once), cache as fallback offline.
 // Google requests are never cached.
-const CACHE = "finanze-v1";
-const SHELL = ["./", "index.html", "styles.css", "app.js", "lib/exceljs.min.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "Versioni.txt"];
+const CACHE = "finanze-v1.1";
+const SHELL = ["./", "index.html", "styles.css", "app.js", "lib/exceljs.min.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "Versioni.txt", "GUIDA.md"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => null)))).then(() => self.skipWaiting()));
 });

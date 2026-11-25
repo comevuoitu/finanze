@@ -3,9 +3,11 @@
    Investments follow the logic of the "Gestione finanziaria" workbook; income and expenses follow Money Manager. */
 
 // ---------------------------------------------------------------- config & state
-const VERSION = "1.0";
+const VERSION = "1.1";
 const LS = { cfg: "fin.cfg", cache: "fin.cache", pref: "fin.pref" };
 const TEST = window.FIN_TEST || null;
+const ART = !TEST && !!window.FIN_ART; // version opened inside claude.ai: data in the page's private store instead of Google Drive
+const SV = { db: null, base: "", saved: {}, dl: null, busy: null };
 const S = { cfg: load(LS.cfg) || { url: "", key: "" }, data: null, etag: null, pending: [], sync: "idle", sheetUrl: null, sheetTimer: null, flushTimer: null,
   pref: load(LS.pref) || { range: "tutto", cur: "EUR", conto: "" } };
 
@@ -18,12 +20,13 @@ const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&a
 const NF2 = new Intl.NumberFormat("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: "always" });
 const NF0 = new Intl.NumberFormat("it-IT", { maximumFractionDigits: 0, useGrouping: "always" });
 const ok = v => v != null && !isNaN(v);
-const eur = v => ok(v) ? (v < 0 ? "−" : "") + NF2.format(Math.abs(v)) + " €" : "–";
-const eur0 = v => ok(v) ? (v < 0 ? "−" : "") + NF0.format(Math.abs(v)) + " €" : "–";
-const sgn = v => ok(v) ? (v > 0.004 ? "+" : v < -0.004 ? "−" : "") + NF2.format(Math.abs(v)) + " €" : "–";
+const HIDE = () => !!(S && S.pref && S.pref.hide), MASK = "•••••";
+const eur = v => HIDE() ? MASK + " €" : ok(v) ? (v < 0 ? "−" : "") + NF2.format(Math.abs(v)) + " €" : "–";
+const eur0 = v => HIDE() ? MASK + " €" : ok(v) ? (v < 0 ? "−" : "") + NF0.format(Math.abs(v)) + " €" : "–";
+const sgn = v => HIDE() ? MASK + " €" : ok(v) ? (v > 0.004 ? "+" : v < -0.004 ? "−" : "") + NF2.format(Math.abs(v)) + " €" : "–";
 const pct = (v, d = 2) => ok(v) && isFinite(v) ? (v * 100).toFixed(d).replace(".", ",") + "%" : "–";
 const spct = (v, d = 2) => ok(v) && isFinite(v) ? (v > 0.00005 ? "+" : v < -0.00005 ? "−" : "") + Math.abs(v * 100).toFixed(d).replace(".", ",") + "%" : "–";
-const money = (v, cur) => !cur || cur === "EUR" ? eur(v) : NF2.format(v) + " " + cur;
+const money = (v, cur) => !cur || cur === "EUR" ? eur(v) : HIDE() ? MASK + " " + cur : NF2.format(v) + " " + cur;
 const r2 = v => Math.round(v * 100) / 100;
 const sum = (a, f) => a.reduce((t, x) => t + (f(x) || 0), 0);
 const pad = n => String(n).padStart(2, "0");
@@ -60,6 +63,8 @@ const IC = {
   chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 3 8-8"/></svg>',
   shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>',
   cash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/></svg>',
+  eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  eyeoff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 5.6A10 10 0 0 1 12 5.5C18 5.5 21.5 12 21.5 12a17 17 0 0 1-3 3.9M6.4 6.5C3.9 8.2 2.5 12 2.5 12S6 18.5 12 18.5a9.5 9.5 0 0 0 4.5-1.1M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"/></svg>',
   scale: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16M5 20h14M6 8l-3 6h6zM18 8l-3 6h6zM6 8h12"/></svg>',
 };
 
@@ -72,7 +77,7 @@ const catList = t => (S.data.categorie[t] || []);
 const catOf = (t, nome) => catList(t).find(c => c.nome === nome);
 const catColor = (t, nome) => (catOf(t, nome) || {}).colore || "#7f8ea3";
 const COLORS = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#0ca30c", "#9085e9", "#e66767", "#2bb3c0", "#b07a4f", "#8fbf3a", "#7f8ea3"];
-const CLASS_COL = ["#3987e5", "#c98500", "#199e70", "#9085e9", "#d55181", "#2bb3c0"];
+const CLASS_COL = ["#4ea1ff", "#f0b13a", "#2fbf8f", "#b49cff", "#ff8fb1", "#5cc8ba"];
 
 // ---------------------------------------------------------------- the numbers (same formulas as the workbook)
 function calc(data = S.data) {
@@ -117,7 +122,7 @@ function calc(data = S.data) {
   R.emerg = emergenza(data, R);
   return R;
 }
-// Rebalancing: targets apply to the whole titles portfolio plus the new cash. A title marked "mantieni" keeps its value (Berkshire in the workbook);
+// Rebalancing: targets apply to the whole titles portfolio plus the new cash. A title marked "mantieni" keeps its value;
 // the rest of its class target goes to the other titles of the class, in proportion to their current value.
 function ribilancia(data, R) {
   const c = data.config, T = R.titValore + (c.daInvestire || 0);
@@ -147,7 +152,7 @@ function emergenza(data, R) {
   const depContati = c.contaVincolati ? R.depTot : sum(R.dep.filter(d => d.svincolabile), d => d.importo);
   const disponibile = R.liquidi + depContati, mancano = Math.max(0, necessario - disponibile);
   const prima = R.dep.length ? Math.min(...R.dep.map(d => d.mesiAlla)) : null;
-  return { necessario, depContati, disponibile, mancano, dopo: Math.max(0, R.daInv - mancano), prima, copertura: necessario ? Math.min(1, disponibile / necessario) : 1 };
+  return { necessario, depContati, disponibile, mancano, dopo: Math.max(0, R.daInv - mancano), prima, copertura: necessario ? Math.min(1, disponibile / necessario) : 0 };
 }
 // one point a day of the value of everything: the chart on the first page
 function snapshot(data, day) {
@@ -230,6 +235,7 @@ async function api(action, payload = {}) {
   return j;
 }
 async function flush(retry = 0) {
+  if (ART) return flushArt();
   if (TEST) { S.pending = []; setSync("ok"); return; }
   if (!S.pending.length) return;
   if (!navigator.onLine) { setSync("offline"); return; }
@@ -243,6 +249,7 @@ async function flush(retry = 0) {
 }
 function scheduleSheet() { clearTimeout(S.sheetTimer); S.sheetTimer = setTimeout(() => updateSheet(false), 5000); }
 async function updateSheet(manual) {
+  if (ART) return;
   if (TEST) { if (manual) toast("Foglio aggiornato (prova)"); return; }
   try { const j = await api("sheet", { tabelle: sheetTables().map(t => ({ nome: t.nome, titolo: t.titolo, h: t.h, rows: t.rows, f: t.f, over: overrides(t) })) }); if (j.sheetUrl) S.sheetUrl = j.sheetUrl; persistCache(); if (manual) { toast("Foglio Google aggiornato"); render(); } }
   catch (e) { if (manual) toast("Non sono riuscito ad aggiornare il foglio: " + e.message); }
@@ -317,9 +324,9 @@ function barsSVG(groups, series, o = {}) {
     return `<g class="bg" data-tip="${tipTxt}"${g.key ? ` data-go="${esc(g.key)}"` : ""}><rect x="${(gw * i).toFixed(1)}" y="0" width="${gw.toFixed(1)}" height="${H}" fill="transparent"/>${rects}
       ${i % step === 0 ? `<text x="${cx.toFixed(1)}" y="${H - 6}" font-size="10.5" fill="var(--muted)" font-weight="650" text-anchor="middle">${esc(g.label)}</text>` : ""}</g>`;
   }).join("");
-  const grid = [max, max / 2].map(v => `<line x1="0" x2="${PW}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--grid)" stroke-width="1"/><text x="${W}" y="${(Y(v) + 3.5).toFixed(1)}" font-size="10" fill="var(--muted)" text-anchor="end">${v >= 1000 ? (v / 1000).toFixed(1).replace(".", ",") + "k" : NF0.format(v)}</text>`).join("");
+  const grid = [max, max / 2].map(v => `<line x1="0" x2="${PW}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--grid)" stroke-width="1"/><text x="${W}" y="${(Y(v) + 3.5).toFixed(1)}" font-size="10" fill="var(--muted)" text-anchor="end">${HIDE() ? "" : v >= 1000 ? (v / 1000).toFixed(1).replace(".", ",") + "k" : NF0.format(v)}</text>`).join("");
   return `<div class="chart bars"><svg ${SVGNS} viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.label || "Grafico a barre")}">${grid}<line x1="0" x2="${PW}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="var(--line)"/>${bars}</svg></div>
-    <div class="small bartip" aria-live="polite">${o.hint || "Tocca una barra per i valori"}</div>`;
+    <div class="small bartip" aria-live="polite">${o.hint ?? "Tocca una barra per i valori"}</div>`;
 }
 function legend(series) { return `<div class="small" style="display:flex;gap:14px;flex-wrap:wrap">${series.map(s => `<span><span class="dot" style="background:${s.color}"></span> ${esc(s.name)}</span>`).join("")}</div>`; }
 function donutSVG(parts, total, label) {
@@ -328,7 +335,7 @@ function donutSVG(parts, total, label) {
   return `<div class="donut"><svg ${SVGNS} viewBox="0 0 150 150" role="img" aria-label="${esc(label)}"><circle r="${R}" cx="75" cy="75" fill="none" stroke="var(--raise)" stroke-width="20"/>${segs}</svg><div class="mid"><b class="num">${eur0(total)}</b><span>${esc(label)}</span></div></div>`;
 }
 const chip = (v, txt) => `<span class="chip ${v > 0.00005 ? "up" : v < -0.00005 ? "down" : "flat"}">${v > 0.00005 ? "▲" : v < -0.00005 ? "▼" : ""} ${txt}</span>`;
-function bigNum(v) { const s = eur(v); const i = s.lastIndexOf(","); return i < 0 ? s : `${s.slice(0, i)}<span class="c">${s.slice(i)}</span>`; }
+function bigNum(v) { if (HIDE()) return `<span class="masked">${MASK}</span>`; const s = eur(v); const i = s.lastIndexOf(","); return i < 0 ? s : `${s.slice(0, i)}<span class="c">${s.slice(i)}</span>`; }
 
 // ---------------------------------------------------------------- router
 const ROUTES = {};
@@ -341,6 +348,7 @@ function render() {
   $("#title").textContent = out.title;
   $("#back").hidden = !out.back; $("#back").dataset.to = out.back || "";
   $("#gear").hidden = !!out.back || r.name === "impostazioni";
+  const eye = $("#eye"); if (eye) { eye.setAttribute("aria-pressed", HIDE()); eye.setAttribute("aria-label", HIDE() ? "Mostra gli importi" : "Nascondi gli importi"); eye.innerHTML = HIDE() ? IC.eyeoff : IC.eye; }
   $("#app").innerHTML = out.html;
   $$(".tabs a").forEach(a => { if (a.dataset.tab === (out.tab || r.name)) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
   if (out.after) out.after();
@@ -348,7 +356,7 @@ function render() {
 }
 
 // ---------------------------------------------------------------- Patrimonio (home)
-ROUTES.home = () => {
+ROUTES.patrimonio = () => {
   const R = calc(), c = CF(), hs = heroSeries(), pts = hs.pts;
   const first = pts[0].v, lastV = pts[pts.length - 1].v, ch = lastV - first, chp = first ? ch / first : 0;
   const hasHist = pts.length >= 2 && pts.some(p => Math.abs(p.v - first) > 0.005);
@@ -359,11 +367,8 @@ ROUTES.home = () => {
   const deltaDefault = hasHist ? `${chip(ch, sgn(ch) + " (" + spct(chp) + ")")}<span class="when">${S.pref.range === "tutto" ? "da " + dmy(pts[0].d) : "nel periodo"}</span>`
     : `${chip(R.gainTot, sgn(R.gainTot) + " (" + spct(R.gainTotPct) + ")")}<span class="when">guadagno sugli investimenti</span>`;
   const parts = [[nomi("depositi"), R.depTot, CLASS_COL[0], "#depositi"], [nomi("titoli"), R.titValore, CLASS_COL[1], "#investimenti"], [nomi("fondo"), R.fondo.posizione, CLASS_COL[2], "#fondo"], ["Liquidità", R.liquidita, CLASS_COL[3], "#liquidita"]];
-  const ym = ymOf(todayISO()), T = totals(mvMonth(ym));
-  const months = Array.from({ length: 6 }, (_, i) => ymAdd(ym, i - 5));
   const em = R.emerg, rb = R.ribil, buy = rb.rows.filter(r => r.nota === "Compra").sort((a, b) => b.diff - a.diff)[0], sell = rb.rows.filter(r => r.nota === "Servirebbe vendere")[0];
-  const recent = MV().slice(0, 5);
-  return { title: "Patrimonio", tab: "home", html: `
+  return { title: "Patrimonio", tab: "patrimonio", html: `
     <section class="hero" aria-label="Patrimonio complessivo">
       <div class="lab"><span>Patrimonio complessivo</span><span>prezzi al ${dmy(c.datiAl)}</span></div>
       <div class="big num" id="hv">${bigNum(R.patrimonio)}</div>
@@ -374,17 +379,10 @@ ROUTES.home = () => {
     <div class="alloc" aria-hidden="true">${parts.map(p => `<span style="flex:${Math.max(p[1], 0)};background:${p[2]}"></span>`).join("")}</div>
     <div class="group">${parts.map(p => `<a class="row" href="${p[3]}"><span class="dot" style="background:${p[2]}"></span><div><div class="t1">${esc(p[0])}</div><div class="t2">${pct(R.patrimonio ? p[1] / R.patrimonio : 0, 1)} del patrimonio</div></div><div class="r"><div class="v num">${eur(p[1])}</div>${
       p[3] === "#investimenti" ? `<div>${chip(R.titGain, spct(R.titGainPct))}</div>` : p[3] === "#fondo" ? `<div>${chip(R.fondo.risultato, spct(R.fondo.pct))}</div>` : p[3] === "#depositi" ? `<div class="t2">${pct(R.depTasso)} lordo</div>` : `<div class="t2">${c.liquidi.length} conti</div>`}</div></a>`).join("")}</div>
-    <a class="month" href="#movimenti">
-      <div class="head"><b style="text-transform:capitalize">${ymLabel(ym)}</b><span class="small">entrate e uscite</span></div>
-      <div class="trio"><div><span>Entrate</span><b class="num up">${eur0(T.e)}</b></div><div><span>Uscite</span><b class="num">${eur0(T.u)}</b></div><div><span>Saldo</span><b class="num ${T.s < 0 ? "down" : ""}">${sgn(T.s).replace(/,\d\d €/, " €")}</b></div></div>
-      ${barsSVG(months.map(m => { const t = totals(mvMonth(m)); return { label: MESI[+m.slice(5) - 1], title: ymLabel(m), vals: [t.e, t.u] }; }), [{ name: "Entrate", color: "var(--up)" }, { name: "Uscite", color: "var(--faint)" }], { h: 110, label: "Entrate e uscite degli ultimi 6 mesi", hint: "" })}
-    </a>
     <div class="pair">
-      <a class="mini" href="#emergenza"><h3>Fondo di emergenza</h3><div class="v num">${pct(em.copertura, 0)}</div><div class="bar"><i style="width:${(em.copertura * 100).toFixed(1)}%;background:${em.mancano ? "var(--warn)" : "var(--up)"}"></i></div><div class="small">${em.mancano ? "mancano " + eur0(em.mancano) : "coperti " + c.mesiCopertura + " mesi di spese"}</div></a>
-      <a class="mini" href="#ribilancia"><h3>Ribilanciamento</h3>${buy ? `<div class="v num">${eur0(buy.diff)}</div><div class="small">da comprare di ${esc(buy.nome)}</div>` : sell ? `<div class="v" style="font-size:16px">Sopra l'obiettivo</div><div class="small">${esc(sell.nome)}</div>` : `<div class="v" style="font-size:17px">In equilibrio</div><div class="small">tutti entro l'${pct(c.soglia || 0.01, 0)}</div>`}</a>
-    </div>
-    <div class="sec-h"><h2>Ultimi movimenti</h2><a href="#movimenti">Tutti</a></div>
-    <div class="group">${recent.map(movRow).join("") || '<div class="empty">Nessun movimento. Tocca + per aggiungerne uno.</div>'}</div>`,
+      <a class="mini" href="#emergenza"><h3>Fondo di emergenza</h3>${c.spesaMensile ? `<div class="v num">${pct(em.copertura, 0)}</div><div class="bar"><i style="width:${(em.copertura * 100).toFixed(1)}%;background:${em.mancano ? "var(--warn)" : "var(--up)"}"></i></div><div class="small">${em.mancano ? "mancano " + eur0(em.mancano) : "coperti " + c.mesiCopertura + " mesi di spese"}</div>` : `<div class="v" style="font-size:16px">Da impostare</div><div class="small">scrivi le spese di un mese</div>`}</a>
+      <a class="mini" href="#ribilancia"><h3>Ribilanciamento</h3>${!R.tit.length ? `<div class="v" style="font-size:16px">Nessun titolo</div><div class="small">aggiungili in Investimenti</div>` : buy ? `<div class="v num">${eur0(buy.diff)}</div><div class="small">da comprare di ${esc(buy.nome)}</div>` : sell ? `<div class="v" style="font-size:16px">Sopra l'obiettivo</div><div class="small">${esc(sell.nome)}</div>` : `<div class="v" style="font-size:17px">In equilibrio</div><div class="small">tutti entro l'${pct(c.soglia || 0.01, 0)}</div>`}</a>
+    </div>`,
     after: () => {
       const el = $("#hc"); if (!el) return;
       bindScrub(el, HERO.pts, HERO.geom, i => {
@@ -410,8 +408,8 @@ ROUTES.investimenti = () => {
       <div class="delta num">${chip(R.gainTot, sgn(R.gainTot) + " (" + spct(R.gainTotPct) + ")")}<span class="when">su ${eur0(R.baseTot)} versati in titoli e fondo</span></div></section>
     <div class="actions"><button class="btn primary" data-act="prezzi">${IC.ref} Aggiorna prezzi</button><button class="btn" data-act="newacq">${IC.plus} Nuovo acquisto</button></div>
     <div class="sec-h"><h2>${esc(nomi("titoli"))}</h2><span class="small num">${eur(R.titValore)}</span></div>
-    <div class="group">${R.tit.map(titRow).join("") || '<div class="empty">Nessun titolo</div>'}
-      <div class="row" style="cursor:default"><span></span><div><div class="t1">Totale</div><div class="t2 num">carico ${eur(R.titCarico)}</div></div><div class="r"><div class="v num">${eur(R.titValore)}</div><div>${chip(R.titGain, sgn(R.titGain))}</div></div></div></div>
+    <div class="group">${R.tit.map(titRow).join("") || `<div class="empty">Nessun titolo. Aggiungi gli ETF o le azioni che hai, poi i loro acquisti.<br><br><button class="btn primary" data-act="newtit">${IC.plus} Aggiungi un titolo</button></div>`}
+      ${R.tit.length ? `<div class="row" style="cursor:default"><span></span><div><div class="t1">Totale</div><div class="t2 num">carico ${eur(R.titCarico)}</div></div><div class="r"><div class="v num">${eur(R.titValore)}</div><div>${chip(R.titGain, sgn(R.titGain))}</div></div></div>` : ""}</div>
     <div class="note">I guadagni sui titoli sono lordi: sulle plusvalenze realizzate paghi il ${pct(c.tassaPlus || 0.26, 0)} quando vendi. Commissioni non incluse.</div>
     <div class="sec-h"><h2>Il resto</h2></div>
     <div class="group">
@@ -485,7 +483,7 @@ ROUTES.fondo = () => {
 };
 ROUTES.liquidita = () => {
   const R = calc(), c = CF();
-  return { title: "Liquidità", back: "home", tab: "home", html: `
+  return { title: "Liquidità", back: "patrimonio", tab: "patrimonio", html: `
     <section class="hero"><div class="lab"><span>Liquidità totale</span></div><div class="big num">${bigNum(R.liquidita)}</div></section>
     <div class="group">${c.liquidi.map(l => `<div class="row" style="grid-template-columns:minmax(0,1fr) auto"><div class="t1">${esc(l.nome)}</div><div class="v num">${eur(l.valore)}</div></div>`).join("")}
       <div class="row" style="grid-template-columns:minmax(0,1fr) auto"><div><div class="t1">Da investire</div><div class="t2">entra nel ribilanciamento</div></div><div class="v num">${eur(c.daInvestire)}</div></div></div>
@@ -553,14 +551,22 @@ ROUTES.movimenti = () => {
   if (MS.t) list = list.filter(m => m.t === MS.t);
   if (MS.a) list = list.filter(m => m.a === MS.a);
   const T = totals(list);
-  return { title: "Movimenti", tab: "movimenti", html: `
+  const months = Array.from({ length: 6 }, (_, i) => ymAdd(MS.ym, i - 5));
+  const trio = `<div class="trio"><div><span>Entrate</span><b class="num up">${eur(T.e)}</b></div><div><span>Uscite</span><b class="num">${eur(T.u)}</b></div><div><span>Saldo</span><b class="num ${T.s < 0 ? "down" : ""}">${sgn(T.s)}</b></div></div>`;
+  return { title: "Movimenti", tab: "home", html: `
+    <section class="month banner" aria-label="Entrate e uscite del mese">
+      ${q ? `<div class="head"><b>Ricerca</b><span class="small">${list.length} movimenti in tutti i mesi</span></div>${trio}`
+        : `<div class="mswitch"><button data-ym="-1" aria-label="Mese prima">${IC.left}</button><b>${ymLabel(MS.ym)}</b><button data-ym="1" aria-label="Mese dopo">${IC.right}</button></div>${trio}
+      ${barsSVG(months.map(m => { const t = totals(mvMonth(m)); return { label: MESI[+m.slice(5) - 1], title: ymLabel(m), vals: [t.e, t.u], dim: m !== MS.ym, key: "#mmese/" + m }; }), [{ name: "Entrate", color: "var(--up)" }, { name: "Uscite", color: "var(--bar2)" }], { h: 104, label: "Entrate e uscite degli ultimi 6 mesi", hint: "" })}`}
+    </section>
     <div class="search"><input id="q" type="search" placeholder="Cerca in tutti i movimenti" value="${esc(MS.q)}" autocomplete="off"></div>
-    ${q ? `<div class="small">${list.length} movimenti trovati in tutti i mesi</div>` : `<div class="mswitch"><button data-ym="-1" aria-label="Mese prima">${IC.left}</button><b>${ymLabel(MS.ym)}</b><button data-ym="1" aria-label="Mese dopo">${IC.right}</button></div>`}
-    <div class="stats three"><div class="stat"><span>Entrate</span><b class="num up">${eur(T.e)}</b></div><div class="stat"><span>Uscite</span><b class="num">${eur(T.u)}</b></div><div class="stat"><span>Saldo</span><b class="num ${T.s < 0 ? "down" : ""}">${sgn(T.s)}</b></div></div>
     <div class="filters"><button data-mt="" aria-pressed="${!MS.t}">Tutti</button><button data-mt="u" aria-pressed="${MS.t === "u"}">Uscite</button><button data-mt="e" aria-pressed="${MS.t === "e"}">Entrate</button>
       ${D().conti.map(a => `<button data-ma="${esc(a)}" aria-pressed="${MS.a === a}">${esc(a)}</button>`).join("")}</div>
     <div class="group">${list.length ? dayGroups(list) : `<div class="empty">Nessun movimento ${q ? "trovato" : "in " + ymLabel(MS.ym)}.<br><br><button class="btn primary" data-act="add">${IC.plus} Aggiungi movimento</button></div>`}</div>` };
 };
+
+ROUTES.home = (...a) => ROUTES.movimenti(...a);
+ROUTES.mmese = ym => { MS.ym = ym; history.replaceState(null, "", "#home"); return ROUTES.movimenti(); };
 
 // ---------------------------------------------------------------- Statistiche
 const ST = { per: "mese", t: "u", ym: ymOf(todayISO()), y: todayISO().slice(0, 4) };
@@ -589,7 +595,7 @@ ROUTES.statistiche = () => {
     <div class="stats"><div class="stat"><span>Entrate</span><b class="num up">${eur(T.e)}</b></div><div class="stat"><span>Uscite</span><b class="num">${eur(T.u)}</b></div>
       <div class="stat"><span>Saldo</span><b class="num ${T.s < 0 ? "down" : ""}">${sgn(T.s)}</b></div><div class="stat"><span>${P.months > 1 ? "Uscite medie al mese" : "Quota risparmiata"}</span><b class="num">${P.months > 1 ? eur(T.u / P.months) : rate == null ? "–" : pct(rate, 0)}</b></div></div>
     <div class="sec-h"><h2>${ST.per === "tutto" ? "Anno per anno" : "Ultimi 12 mesi"}</h2></div>
-    <div>${barsSVG(groups, [{ name: "Entrate", color: "var(--up)" }, { name: "Uscite", color: "var(--faint)" }], { label: "Entrate e uscite" })}${legend([{ name: "Entrate", color: "var(--up)" }, { name: "Uscite", color: "var(--faint)" }])}</div>
+    <div>${barsSVG(groups, [{ name: "Entrate", color: "var(--up)" }, { name: "Uscite", color: "var(--bar2)" }], { label: "Entrate e uscite" })}${legend([{ name: "Entrate", color: "var(--up)" }, { name: "Uscite", color: "var(--bar2)" }])}</div>
     <div class="seg e" role="group" aria-label="Tipo"><button data-stt="u" aria-pressed="${ST.t === "u"}">Uscite</button><button data-stt="e" class="in" aria-pressed="${ST.t === "e"}">Entrate</button></div>
     ${cats.length ? `<div class="donutbox">${donutSVG(parts, tot, ST.t === "u" ? "uscite" : "entrate")}<div class="small" style="display:grid;gap:5px">${parts.map(p => `<span><span class="dot" style="background:${p.color}"></span> ${esc(p.nome)} <b class="num" style="color:var(--ink)">${pct(p.v / tot, 0)}</b></span>`).join("")}</div></div>
     <div class="group">${cats.map(x => `<a class="row catrow" href="#categoria/${ST.t}/${encodeURIComponent(x.nome)}"><span class="ico" style="background:${x.color}">${esc(x.nome.replace(/[^A-Za-zÀ-ú]/g, "").slice(0, 2))}</span>
@@ -610,18 +616,43 @@ ROUTES.categoria = (t, nome) => {
     <section class="hero"><div class="lab"><span>${t === "u" ? "Uscite" : "Entrate"}, ${esc(P.label)}</span></div><div class="big num">${bigNum(tot)}</div>
       <div class="delta"><span class="when">${list.length} movimenti, in tutto ${eur0(sum(all, m => m.e))} dal primo</span></div></section>
     <div>${barsSVG(groups, [{ name: nome, color: col }], { label: "Ultimi 12 mesi di " + nome })}</div>
-    ${sl.length > 1 || (sl[0] && sl[0][0] !== "Senza sottocategoria") ? `<div class="sec-h"><h2>Sottocategorie</h2></div><div class="group">${sl.map(([k, v]) => `<div class="row catrow" style="grid-template-columns:minmax(0,1fr) auto"><div><div class="t1">${esc(k)}</div><div class="barx"><i style="width:${(v / sl[0][1] * 100).toFixed(1)}%;background:${col}"></i></div></div><div class="r"><div class="v num">${eur(v)}</div><div class="t2">${pct(v / tot, 0)}</div></div></div>`).join("")}</div>` : ""}
+    ${sl.length > 1 || (sl[0] && sl[0][0] !== "Senza sottocategoria") ? `<div class="sec-h"><h2>Sottocategorie</h2></div><div class="group">${sl.map(([k, v]) => `<a class="row catrow" href="#sottocategoria/${t}/${encodeURIComponent(nome)}/${encodeURIComponent(k === "Senza sottocategoria" ? "-" : k)}" style="grid-template-columns:minmax(0,1fr) 92px auto"><div><div class="t1">${esc(k)}</div><div class="barx"><i style="width:${(v / sl[0][1] * 100).toFixed(1)}%;background:${col}"></i></div></div><div class="r"><div class="v num">${eur(v)}</div><div class="t2">${pct(v / tot, 0)}</div></div>${IC.chev}</a>`).join("")}</div><div class="note">Tocca una sottocategoria per vederla mese per mese.</div>` : ""}
     <div class="sec-h"><h2>Movimenti</h2></div><div class="group">${dayGroups(list, 200) || '<div class="empty">Nessun movimento</div>'}</div>` };
+};
+
+// one subcategory month by month: e.g. how much coffee each month
+ROUTES.sottocategoria = (t, nome, sub, ym) => {
+  if (ym) { ST.per = "mese"; ST.ym = ym; history.replaceState(null, "", "#sottocategoria/" + t + "/" + encodeURIComponent(nome) + "/" + encodeURIComponent(sub)); }
+  const none = sub === "-", label = none ? "Senza sottocategoria" : sub, col = catColor(t, nome);
+  const all = MV().filter(m => m.t === t && m.c === nome && (none ? !m.s : m.s === sub)), P = stPeriod(), list = all.filter(P.f), tot = sum(list, m => m.e);
+  const end = ST.per === "anno" ? ST.y + "-12" : ST.per === "mese" ? ST.ym : ymOf(todayISO());
+  const byM = {}; all.forEach(m => { const k = m.d.slice(0, 7); byM[k] = byM[k] || { v: 0, n: 0 }; byM[k].v += m.e; byM[k].n++; });
+  const groups = Array.from({ length: 12 }, (_, i) => { const m = ymAdd(end, i - 11), x = byM[m] || { v: 0, n: 0 }; return { label: MESI[+m.slice(5) - 1].slice(0, 3), title: ymLabel(m) + " (" + x.n + " volte)", vals: [x.v], key: "#sottocategoria/" + t + "/" + encodeURIComponent(nome) + "/" + encodeURIComponent(sub) + "/" + m }; });
+  const last12 = groups.map(g => g.vals[0]), avg12 = sum(last12, v => v) / 12;
+  const first = all.length ? all[all.length - 1].d.slice(0, 7) : ymOf(todayISO()), nMonths = Math.max(1, monthsBetween(first + "-01", todayISO()) + 1);
+  const years = [...new Set(all.map(m => m.d.slice(0, 4)))].sort().reverse();
+  const yRows = years.map(y => { const L = all.filter(m => m.d.startsWith(y)), cy = todayISO().slice(0, 4), fm = y === first.slice(0, 4) ? +first.slice(5, 7) : 1, lm = y === cy ? +todayISO().slice(5, 7) : 12, mesi = Math.max(1, lm - fm + 1);
+    return `<tr><td>${y}</td><td class="n">${eur(sum(L, m => m.e))}</td><td class="n">${eur(sum(L, m => m.e) / mesi)}</td><td class="n">${L.length}</td></tr>`; }).join("");
+  return { title: label, back: "categoria/" + t + "/" + encodeURIComponent(nome), tab: "statistiche", html: `
+    <section class="hero"><div class="lab"><span>${esc(nome)} › ${esc(label)}, ${esc(P.label)}</span></div><div class="big num">${bigNum(tot)}</div>
+      <div class="delta"><span class="when">${list.length} movimenti nel periodo</span></div></section>
+    <div class="stats three"><div class="stat"><span>Media al mese, ultimi 12</span><b class="num">${eur(avg12)}</b></div><div class="stat"><span>Media al mese da sempre</span><b class="num">${eur(sum(all, m => m.e) / nMonths)}</b></div><div class="stat"><span>Totale da sempre</span><b class="num">${eur(sum(all, m => m.e))}</b></div></div>
+    <div class="sec-h"><h2>Mese per mese</h2></div>
+    <div>${barsSVG(groups, [{ name: label, color: col }], { label: "Ultimi 12 mesi di " + label, hint: "Tocca un mese per vederne i movimenti" })}</div>
+    <div class="sec-h"><h2>Anno per anno</h2></div>
+    <div class="tblwrap"><table><thead><tr><th>Anno</th><th class="n">Totale</th><th class="n">Al mese</th><th class="n">Volte</th></tr></thead><tbody>${yRows || '<tr><td colspan="4">Nessun movimento</td></tr>'}</tbody></table></div>
+    <div class="sec-h"><h2>Movimenti</h2></div><div class="group">${dayGroups(list, 200) || '<div class="empty">Nessun movimento nel periodo</div>'}</div>
+    <div class="note">Il periodo è quello scelto in Statistiche (mese, anno o tutto). La media "da sempre" conta tutti i mesi dal primo movimento di questa sottocategoria, anche quelli a zero.</div>` };
 };
 
 // ---------------------------------------------------------------- Impostazioni
 ROUTES.impostazioni = () => {
   const c = CF();
   return { title: "Impostazioni", tab: "", html: `
-    <div class="sec-h"><h2>Google Drive</h2></div>
+    ${ART ? `<div class="sec-h"><h2>Dove sono i dati</h2></div><div class="group"><div class="row" style="grid-template-columns:minmax(0,1fr) auto"><div><div class="t1">Nello spazio privato di questa pagina</div><div class="t2">Legati al tuo account Claude: li vedi solo tu, anche se condividi la pagina</div></div><span class="chip ${S.sync === "ok" ? "up" : "flat"}">${S.sync === "ok" ? "salvato" : esc(S.sync)}</span></div></div>` : `<div class="sec-h"><h2>Google Drive</h2></div>
     <div class="group"><div class="row" style="grid-template-columns:minmax(0,1fr) auto"><div><div class="t1">${TEST ? "Modalità prova" : "Collegato"}</div><div class="t2">I dati stanno in "Finanze/dati.json" sul tuo Drive</div></div><span class="chip ${S.sync === "ok" ? "up" : "flat"}">${S.sync === "ok" ? "salvato" : esc(S.sync)}</span></div>
       ${S.sheetUrl ? `<a class="row" href="${esc(S.sheetUrl)}" target="_blank" rel="noopener"><span></span><div class="t1">Apri il foglio Google di riepilogo</div>${IC.chev}</a>` : ""}
-      <button class="row" data-act="sheet"><span></span><div class="t1">Aggiorna il foglio Google adesso</div>${IC.chev}</button></div>
+      <button class="row" data-act="sheet"><span></span><div class="t1">Aggiorna il foglio Google adesso</div>${IC.chev}</button></div>`}
     <div class="sec-h"><h2>Movimenti</h2></div>
     <div class="group"><a class="row" href="#categorie"><span></span><div><div class="t1">Categorie e sottocategorie</div><div class="t2">${catList("u").length} di uscita, ${catList("e").length} di entrata</div></div>${IC.chev}</a>
       <button class="row" data-act="conti"><span></span><div><div class="t1">Conti</div><div class="t2">${esc(D().conti.join(", "))}</div></div>${IC.chev}</button>
@@ -629,17 +660,19 @@ ROUTES.impostazioni = () => {
       <button class="row" data-act="mmimport"><span></span><div><div class="t1">Importa da Money Manager</div><div class="t2">aggiunge solo i movimenti nuovi</div></div>${IC.chev}</button></div>
     <div class="sec-h"><h2>Investimenti</h2></div>
     <div class="group"><button class="row" data-act="nomi"><span></span><div><div class="t1">Nomi delle sezioni</div><div class="t2">${esc(nomi("depositi"))}, ${esc(nomi("titoli"))}, ${esc(nomi("fondo"))}</div></div>${IC.chev}</button>
-      <button class="row" data-act="newtit"><span></span><div class="t1">Aggiungi un titolo</div>${IC.chev}</button></div>
+      <button class="row" data-act="newtit"><span></span><div class="t1">Aggiungi un titolo</div>${IC.chev}</button>
+      ${ART ? "" : `<button class="row" data-act="serale"><span></span><div><div class="t1">Prezzi aggiornati ogni sera</div><div class="t2">dai codici Google Finance dei titoli, anche ad app chiusa</div></div><span class="chip ${S.serale ? "up" : "flat"}">${S.serale ? "attivo" : S.serale === false ? "spento" : "–"}</span></button>`}</div>
     <div class="sec-h"><h2>Copie dei dati</h2></div>
     <div class="group"><button class="row" data-act="xls"><span></span><div><div class="t1">Scarica Excel</div><div class="t2">investimenti, movimenti e riepiloghi</div></div>${IC.chev}</button>
       <button class="row" data-act="backup"><span></span><div class="t1">Scarica dati.json</div>${IC.chev}</button>
-      <button class="row" data-act="listbk"><span></span><div><div class="t1">Backup automatici</div><div class="t2">uno a settimana su Drive, per un anno</div></div>${IC.chev}</button>
+      ${ART ? "" : `<button class="row" data-act="listbk"><span></span><div><div class="t1">Backup automatici</div><div class="t2">uno a settimana su Drive, per un anno</div></div>${IC.chev}</button>`}
       <button class="row" data-act="restorefile"><span></span><div class="t1">Ripristina da un file dati.json</div>${IC.chev}</button></div>
     <input type="file" id="restorefile" accept=".json,application/json" hidden><input type="file" id="mmfile" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
-    ${installBox()}
-    <div class="group"><button class="row" data-act="versioni"><span></span><div class="t1">Novità e versioni</div><span class="small">${VERSION}</span></button>
-      <button class="row" data-act="setup"><span></span><div class="t1">Cambia collegamento</div>${IC.chev}</button>
-      <button class="row" data-act="logout"><span></span><div class="t1 down">Scollega questo dispositivo</div><span></span></button></div>` };
+    ${ART ? "" : installBox()}
+    <div class="group"><button class="row" data-act="guida"><span></span><div class="t1">Guida</div>${IC.chev}</button>
+      <button class="row" data-act="versioni"><span></span><div class="t1">Novità e versioni</div><span class="small">${VERSION}</span></button>
+      ${ART ? "" : `<button class="row" data-act="setup"><span></span><div class="t1">Cambia collegamento</div>${IC.chev}</button>
+      <button class="row" data-act="logout"><span></span><div class="t1 down">Scollega questo dispositivo</div><span></span></button>`}</div>` };
 };
 ROUTES.categorie = () => {
   const block = t => `<div class="sec-h"><h2>${t === "u" ? "Uscite" : "Entrate"}</h2><button data-act="newcat" data-t="${t}">Aggiungi</button></div>
@@ -716,21 +749,42 @@ function saveMF(asCopy) {
 
 // --- investments forms
 function prezziForm() {
-  const R = calc(), tits = D().titoli, any = tits.some(t => t.ticker);
-  openSheet(`<h2>Aggiorna prezzi</h2><div class="small">Scrivi i prezzi di mercato di oggi, come li vedi su Fineco. Se a un titolo hai dato il codice di Google Finance, li prendo da lì.</div>
+  const R = calc(), tits = D().titoli, any = !ART && tits.some(t => t.ticker);
+  openSheet(`<h2>Aggiorna prezzi</h2><div class="small">Scrivi i prezzi di mercato di oggi, come li vedi dalla tua banca. Se a un titolo hai dato il codice di Google Finance, li prendo da lì.</div>
     <form class="form" id="pf">${tits.map(t => `<label class="full">${esc(t.breve || t.nome)} <span id="pf-st-${esc(t.id)}" class="small"></span><input id="pf-${esc(t.id)}" inputmode="decimal" value="${inNum(t.prezzo)}"></label>`).join("")}
       <label class="full">Prezzi al<input id="pf-al" type="date" value="${todayISO()}"></label>
-      ${any ? `<button type="button" class="btn full" data-act="gfin">${IC.ref} Prendi da Google Finance</button>` : `<div class="note full">Per avere i prezzi in automatico, apri un titolo e scrivi il suo codice Google Finance (per esempio BIT:EIMI).</div>`}
+      ${any ? `<div class="note full">Con i codici Google Finance i prezzi si aggiornano da soli quando apri l'app, una volta al giorno${S.serale ? ", e ogni sera" : ""}.</div><button type="button" class="btn full" data-act="gfin">${IC.ref} Prendi da Google Finance adesso</button>` : ART ? "" : `<div class="note full">Per avere i prezzi in automatico, apri un titolo e scrivi il suo codice Google Finance (per esempio BIT:SWDA).</div>`}
       ${formActions()}</form>`);
   onForm("pf", () => {
     const prezzi = {}; for (const t of tits) { const v = num("pf-" + t.id); if (v == null || v <= 0) { toast("Prezzo mancante per " + (t.breve || t.nome)); return false; } prezzi[t.id] = v; }
     commit({ op: "prezzi", prezzi, al: val("pf-al") || todayISO() }, "Prezzi aggiornati");
   });
 }
+// automatic prices: once a day when the app opens, from the Google Finance codes of the titles
+const valuteNeeded = () => [...new Set((CF().valute || []).concat(D().titoli.map(t => t.valuta)).filter(v => v && v !== "EUR"))];
+async function autoPrezzi() {
+  if (TEST || ART || !S.data) return;
+  const tits = D().titoli.filter(t => t.ticker), today = todayISO();
+  if (!tits.length || S.pref.autoDay === today) return;
+  S.pref.autoDay = today; save(LS.pref, S.pref);
+  try {
+    const j = await api("prezzi", { tickers: Object.fromEntries(tits.map(t => [t.id, t.ticker])), valute: valuteNeeded() });
+    const prezzi = {}; let n = 0;
+    tits.forEach(t => { const r = (j.prezzi || {})[t.id]; if (r && r.v > 0 && (!t.prezzo || Math.abs(r.v / t.prezzo - 1) < 0.3)) { prezzi[t.id] = r.v; if (Math.abs(r.v - (t.prezzo || 0)) > 1e-9) n++; } });
+    if (j.cambi && Object.keys(j.cambi).length) commit({ op: "config", patch: { cambi: Object.assign({}, CF().cambi, j.cambi), cambiAl: "Google Finance, " + dmy(today) } });
+    if (n) commit({ op: "prezzi", prezzi, al: today }, "Prezzi aggiornati da Google Finance");
+  } catch (e) { S.pref.autoDay = ""; save(LS.pref, S.pref); }
+}
+async function toggleSerale() {
+  if (S.serale === undefined) return toast("Per questa funzione aggiorna lo script Google alla versione 1.1");
+  toast(S.serale ? "Spengo l'aggiornamento serale…" : "Attivo l'aggiornamento serale…");
+  try { const j = await api("serale", { on: !S.serale }); S.serale = !!j.serale; render(); toast(S.serale ? "Ogni sera verso le 19 aggiorno i prezzi" : "Aggiornamento serale spento"); }
+  catch (e) { toast(e.message); }
+}
 async function fetchPrezzi() {
   const tits = D().titoli.filter(t => t.ticker); toast("Chiedo i prezzi a Google…");
   try {
-    const j = TEST ? { prezzi: {} } : await api("prezzi", { tickers: Object.fromEntries(tits.map(t => [t.id, t.ticker])), valute: (CF().valute || []).filter(v => v !== "EUR").concat(D().titoli.map(t => t.valuta).filter(v => v && v !== "EUR")) });
+    const j = TEST ? { prezzi: {} } : await api("prezzi", { tickers: Object.fromEntries(tits.map(t => [t.id, t.ticker])), valute: valuteNeeded() });
     let n = 0;
     tits.forEach(t => { const r = (j.prezzi || {})[t.id], st = $("#pf-st-" + t.id), inp = $("#pf-" + t.id); if (!st) return;
       if (r && r.v > 0) { const jump = t.prezzo ? Math.abs(r.v / t.prezzo - 1) : 0; inp.value = inNum(r.v); n++; st.textContent = jump > 0.3 ? "da Google, controlla: è molto diverso" : "da Google"; st.style.color = jump > 0.3 ? "var(--warn)" : "var(--up)"; }
@@ -746,12 +800,13 @@ function titForm(id) {
     <label class="full">Nome completo<input id="t-nome" value="${esc(t.nome)}" required></label>
     <label>Nome breve<input id="t-breve" value="${esc(t.breve)}"></label><label>ISIN<input id="t-isin" value="${esc(t.isin)}" autocapitalize="characters"></label>
     <label>Classe<select id="t-classe">${opt(classi, t.classe)}</select></label><label>Valuta del prezzo<select id="t-val">${opt(CF().valute || ["EUR"], t.valuta)}</select></label>
-    <label>Prezzo di mercato<input id="t-prezzo" inputmode="decimal" value="${inNum(t.prezzo)}"></label><label>Codice Google Finance<input id="t-tick" value="${esc(t.ticker)}" placeholder="es. BIT:EIMI" autocapitalize="characters"></label>
-    <label class="check full"><input type="checkbox" id="t-mant" ${t.mantieni ? "checked" : ""}> Nel ribilanciamento resta com'è (come Berkshire nel tuo file)</label>
+    <label>Prezzo di mercato<input id="t-prezzo" inputmode="decimal" value="${inNum(t.prezzo)}"></label><label>Codice Google Finance<input id="t-tick" value="${esc(t.ticker)}" placeholder="es. BIT:SWDA" autocapitalize="characters"></label>
+    <div class="note full">Puoi scrivere più codici separati da uno spazio (per esempio <b>BIT:SWDA ETR:EUNL</b>): uso il primo che risponde. Il prezzo deve essere nella valuta scelta sopra.</div>
+    <label class="check full"><input type="checkbox" id="t-mant" ${t.mantieni ? "checked" : ""}> Nel ribilanciamento resta com'è (non comprare né vendere)</label>
     ${formActions(!!id)}</form>`);
   onForm("tf", () => {
     const nome = val("t-nome"); if (!nome) { toast("Scrivi il nome"); return false; }
-    const item = Object.assign({}, t, { id: id || uid("t"), nome, breve: val("t-breve") || nome.slice(0, 24), isin: val("t-isin"), classe: val("t-classe"), valuta: val("t-val"), prezzo: num("t-prezzo") || 0, ticker: val("t-tick").toUpperCase(), mantieni: $("#t-mant").checked });
+    const item = Object.assign({}, t, { id: id || uid("t"), nome, breve: val("t-breve") || nome.slice(0, 24), isin: val("t-isin"), classe: val("t-classe"), valuta: val("t-val"), prezzo: num("t-prezzo") || 0, ticker: val("t-tick").toUpperCase().replace(/[,;]+/g, " ").replace(/\s+/g, " ").trim(), mantieni: $("#t-mant").checked });
     if (!id) item.prezzoAl = todayISO();
     commit({ op: "titolo", item }, "Titolo salvato");
   }, () => { commit({ op: "deltitolo", id }, "Titolo eliminato"); location.hash = "#investimenti"; });
@@ -890,7 +945,7 @@ function valuteForm() {
   const c = CF(), V = (c.valute || ["EUR"]).filter(v => v !== "EUR").concat([""]);
   openSheet(`<h2>Valute e cambi</h2><div class="small">Quanti euro vale 1 unità di ogni valuta. Servono per i movimenti nuovi in valuta estera; quelli importati hanno già il loro controvalore. Cambi: ${esc(c.cambiAl || "–")}.</div><form class="form" id="xf">
     ${V.map((v, i) => `<label>Valuta<input id="x-v${i}" value="${esc(v)}" placeholder="es. CHF" autocapitalize="characters" maxlength="3"></label><label>€ per 1<input id="x-r${i}" inputmode="decimal" value="${v ? inNum((c.cambi || {})[v]) : ""}"></label>`).join("")}
-    ${TEST ? "" : `<button type="button" class="btn full" data-act="gfx">${IC.ref} Aggiorna i cambi da Google Finance</button>`}${formActions()}</form>`);
+    ${TEST || ART ? "" : `<button type="button" class="btn full" data-act="gfx">${IC.ref} Aggiorna i cambi da Google Finance</button>`}${formActions()}</form>`);
   onForm("xf", () => { const valute = ["EUR"], cambi = {}; V.forEach((_, i) => { const v = val("x-v" + i).toUpperCase(), r = num("x-r" + i); if (v && v !== "EUR") { valute.push(v); if (r) cambi[v] = r; } });
     commit({ op: "config", patch: { valute, cambi, cambiAl: c.cambiAl } }, "Valute salvate"); });
 }
@@ -986,7 +1041,12 @@ async function buildWorkbook() {
   tab("Mesi", "Entrate e uscite mese per mese", ["Mese", "Entrate", "Uscite", "Saldo"], mesiRows(), ["", "eur", "eur", "eur"]);
   return new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 }
-async function downloadBlob(blob, name) { const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
+async function downloadBlob(blob, name) {
+  if (ART) {
+    if (!SV.dl) return toast("Qui non posso scaricare file: apri la pagina da claude.ai");
+    try { await SV.dl.save({ filename: name, data: blob }); toast("Scaricato " + name); } catch (e) { if (e && e.code !== "declined") toast("Download non riuscito: " + (e.message || e.code)); }
+    return;
+  } const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
 
 // ---------------------------------------------------------------- backups
 const bkLabel = n => { const m = n.match(/dati-(\d{4})-(\d{2})-(\d{2})(?:_(\d{2})-(\d{2}))?/); return m ? `${m[3]}/${m[2]}/${m[1]}${m[4] ? " " + m[4] + ":" + m[5] + " (prima di un ripristino)" : ""}` : n; };
@@ -999,6 +1059,7 @@ async function listBackups() {
 }
 async function doRestore(payload, label) {
   closeSheet(); toast("Ripristino…");
+  if (ART) { S.data = payload.data; S.pending = []; await flushArt(); render(); toast("Dati ripristinati dal file"); return; }
   try { const j = await api("restore", payload); S.data = j.data; S.etag = j.rev; S.pending = []; persistCache(); render(); scheduleSheet(); toast("Ripristinato " + bkLabel(label)); }
   catch (e) { toast(e.message); }
 }
@@ -1053,6 +1114,9 @@ document.addEventListener("click", async e => {
     listbk: listBackups, restorefile: () => $("#restorefile").click(), versioni: showVersions, setup: () => showSetup(), import: () => $("#importfile").click(),
     logout: () => { if (act.dataset.armed !== "1") { act.dataset.armed = "1"; act.querySelector(".t1").textContent = "Tocca ancora per scollegare"; return; } drop(LS.cfg); drop(LS.cache); location.reload(); },
     install: () => { const ev = S.installEvt; if (!ev) return; S.installEvt = null; ev.prompt(); ev.userChoice.then(c => { if (c.outcome !== "accepted") toast("Installazione annullata"); render(); }); },
+    reload: () => location.reload(),
+    eye: () => { S.pref.hide = !S.pref.hide; save(LS.pref, S.pref); render(); toast(S.pref.hide ? "Importi nascosti" : "Importi visibili"); },
+    serale: toggleSerale, guida: showGuide, zero: startZero,
     restore: () => { if (act.dataset.armed !== "1") { act.dataset.armed = "1"; act.textContent = "Tocca ancora"; return; } doRestore({ name: act.dataset.name }, act.dataset.name); },
   };
   if (A[a]) return A[a]();
@@ -1066,28 +1130,128 @@ document.addEventListener("change", async e => {
 let qT; document.addEventListener("input", e => { if (e.target.id === "q") { MS.q = e.target.value; clearTimeout(qT); qT = setTimeout(() => { const p = e.target.selectionStart; render(); const q = $("#q"); if (q) { q.focus(); q.setSelectionRange(p, p); } }, 250); } });
 window.addEventListener("hashchange", () => { closeSheet(); render(); window.scrollTo(0, 0); });
 window.addEventListener("online", () => flush());
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.data && !TEST && !S.pending.length) refresh(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.data && !TEST && !ART && !S.pending.length) refresh(); });
 
 // ---------------------------------------------------------------- start
-const logoSvg = () => `<svg class="logo" viewBox="0 0 96 96" aria-hidden="true"><rect width="96" height="96" rx="24" fill="#163a44"/><path d="M18 64l18-18 12 9 26-27" fill="none" stroke="#e0bb62" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="74" cy="28" r="6" fill="#e0bb62"/></svg>`;
+const logoSvg = () => `<svg class="logo" viewBox="0 0 96 96" aria-hidden="true"><rect width="96" height="96" rx="24" fill="#003153"/><path d="M18 64l18-18 12 9 26-27" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="74" cy="28" r="7" fill="#2fbfae"/></svg>`;
+// ---- store inside claude.ai: one document for settings and investments, one per month of movements (each document must stay small)
+const clone = o => JSON.parse(JSON.stringify(o));
+function splitDocs(data) {
+  const main = clone(data); delete main.movimenti; const out = { main };
+  data.movimenti.forEach(m => { const k = "mov-" + m.d.slice(0, 7); (out[k] = out[k] || { mese: m.d.slice(0, 7), items: [] }).items.push(m); });
+  return out;
+}
+function joinDocs(docs) {
+  const data = clone(docs.main); data.movimenti = [];
+  Object.keys(docs).filter(k => k.startsWith("mov-")).forEach(k => { data.movimenti.push(...clone(docs[k].items || [])); });
+  data.movimenti.sort((a, b) => b.d.localeCompare(a.d)); return data;
+}
+async function flushArt() {
+  if (SV.busy) { SV.again = true; return SV.busy; }
+  SV.busy = (async () => {
+    setSync("saving");
+    try {
+      do {
+        SV.again = false; S.pending = [];
+        const parts = splitDocs(S.data);
+        for (const k of Object.keys(parts)) { const s = JSON.stringify(parts[k]); if (SV.saved[k] !== s) { await SV.db.doc(SV.base + k).set(parts[k]); SV.saved[k] = s; } }
+        for (const k of Object.keys(SV.saved)) if (!parts[k]) { await SV.db.doc(SV.base + k).delete(); delete SV.saved[k]; }
+      } while (SV.again);
+      setSync("ok");
+    } catch (e) {
+      setSync("err"); toast(e && e.code === "quota_exceeded" ? "Spazio della pagina esaurito: scarica dati.json" : "Non salvato: " + (e && (e.message || e.code)));
+      setTimeout(() => flushArt(), 20000);
+    } finally { SV.busy = null; }
+  })();
+  return SV.busy;
+}
+async function startArt() {
+  screen(`${logoSvg()}<div class="muted">Carico i tuoi dati…</div>`);
+  const fail = msg => screen(`${logoSvg()}<h2>Non riesco ad aprire i dati</h2><div class="muted">${esc(msg)}</div><button class="btn primary" data-act="reload">Riprova</button>`);
+  const timer = setTimeout(() => { if (!S.data) fail("Lo spazio dati della pagina non risponde. Controlla la connessione e riprova."); }, 12000);
+  try {
+    // the page's runtime can arrive a moment after this script: wait for it instead of failing
+    for (let i = 0; i < 100 && !(window.claude && window.claude.use); i++) await new Promise(r => setTimeout(r, 100));
+    if (!(window.claude && window.claude.use)) { clearTimeout(timer); return fail("La pagina non riceve lo spazio dati da Claude. Aprila dal riquadro della chat o da claude.ai."); }
+    window.claude.use("downloads").then(d => { SV.dl = d; }, () => {});
+    const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+    const uid = user ? await user.id() : null;
+    if (!db || !uid) { clearTimeout(timer); return fail("Apri la pagina da claude.ai con il tuo account: i dati sono legati a te."); }
+    SV.db = db; SV.base = "data/users/" + uid + "/";
+    const snap = await db.collection("data/users/" + uid).get();
+    clearTimeout(timer);
+    const docs = {}; snap.docs.forEach(d => { if (d.exists) docs[d.id] = d.data(); });
+    if (!docs.main) return showImport();
+    S.data = joinDocs(docs); S.etag = 1;
+    Object.entries(splitDocs(S.data)).forEach(([k, v]) => { SV.saved[k] = JSON.stringify(v); });
+    Object.keys(docs).forEach(k => { if (!SV.saved[k]) SV.saved[k] = "?"; });
+    render(); setSync("ok");
+  } catch (e) { clearTimeout(timer); fail("Errore: " + ((e && (e.code ? e.code + " " : "") + (e.message || "")) || String(e))); }
+}
 function screen(html) { $("#title").textContent = "Finanze"; $("#back").hidden = true; $("#app").innerHTML = `<div class="center"><div class="box">${html}</div></div>`; }
 function showSetup(msg) {
   screen(`${logoSvg()}<h2>Collega Google Drive</h2>${msg ? `<span class="chip down">${esc(msg)}</span>` : ""}
     <div class="muted">Incolla l'indirizzo dell'app web che ti ha dato Google Apps Script (finisce con <b>/exec</b>) e la chiave segreta che hai scritto nello script.</div>
     <form class="form" id="setup" style="width:100%"><label class="full">Indirizzo dello script<input id="s-url" value="${esc(S.cfg.url)}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" autocapitalize="off"></label>
-      <label class="full">Chiave segreta<input id="s-key" type="password" value="${esc(S.cfg.key)}" autocomplete="off" autocapitalize="off"></label><button class="btn primary full">Collega</button></form>`);
+      <label class="full">Chiave segreta<input id="s-key" type="password" value="${esc(S.cfg.key)}" autocomplete="off" autocapitalize="off"></label><button class="btn primary full">Collega</button></form>
+    <button class="btn" data-act="guida">Prima volta? Leggi la guida</button>`);
   $("#setup").onsubmit = e => { e.preventDefault(); const url = val("s-url"), key = val("s-key");
     if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(url)) return toast("L'indirizzo deve iniziare con https://script.google.com/macros/s/ e finire con /exec");
     if (key.length < 8) return toast("La chiave deve avere almeno 8 caratteri");
     S.cfg = { url, key }; save(LS.cfg, S.cfg); drop(LS.cache); S.data = null; start(); };
 }
+// a new user starts with empty investments and Money Manager-like categories
+function emptyData() {
+  const cat = (nome, sub, i) => ({ nome, colore: COLORS[i % COLORS.length], sub });
+  const U = [["Cibo", ["Spesa", "Ristorante", "Bar", "Pranzo fuori"]], ["Casa", ["Affitto o mutuo", "Bollette", "Manutenzione", "Arredamento"]], ["Trasporti", ["Carburante", "Ricarica", "Mezzi pubblici", "Treno", "Parcheggio", "Manutenzione"]],
+    ["Salute", ["Medici", "Farmacia", "Sport"]], ["Abbigliamento", []], ["Svago", ["Cinema", "Concerti", "Abbonamenti"]], ["Viaggi", ["Trasporto", "Alloggio", "Attività"]], ["Regali", []], ["Istruzione", ["Corsi", "Libri", "Iscrizioni"]], ["Bellezza", []], ["Tecnologia", []], ["Altro", []]];
+  const E = [["Stipendio", []], ["Fatture", []], ["Rimborsi", []], ["Regali", []], ["Interessi e dividendi", []], ["Altro", []]];
+  return { app: "finanze", versione: 1, aggiornato: new Date().toISOString(),
+    config: { datiAl: todayISO(), nomi: { depositi: "Depositi", titoli: "Titoli", fondo: "Fondo pensione" }, ritenuta: 0.26, bollo: 0.002, tassaPlus: 0.26, spesaMensile: 0, mesiCopertura: 6, contaVincolati: false,
+      liquidi: [{ id: "l1", nome: "Conto corrente", valore: 0 }], daInvestire: 0, classi: [{ nome: "Azioni", obiettivo: 0.8 }, { nome: "Obbligazioni", obiettivo: 0.2 }], soglia: 0.01, valute: ["EUR"], cambi: {}, cambiAl: "" },
+    titoli: [], acquisti: [], depositi: [], fondo: { nome: "", comparto: "", posizione: 0, posizioneAl: "", versato: 0, ter: 0, anni: [], rendimenti: [] }, storico: [], movimenti: [],
+    categorie: { u: U.map((x, i) => cat(x[0], x[1], i)), e: E.map((x, i) => cat(x[0], x[1], i)) }, conti: ["Carta", "Contanti", "Conto corrente"] };
+}
+async function startZero() {
+  toast("Preparo i dati…");
+  try { const data = emptyData(); const j = await api("save", { baseRev: 0, data, create: true }); if (!j.ok) throw new Error("Non sono riuscito a creare i dati");
+    S.data = data; S.etag = j.rev; persistCache(); history.replaceState(null, "", "#home"); render(); updateSheet(false); toast("Pronto: aggiungi il primo movimento con +"); }
+  catch (e) { toast(e.message); }
+}
+// in-app guide: GUIDA.md ships with the app and is rendered with a small markdown subset
+function mdLite(md) {
+  const inl = t => esc(t).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  const out = []; let list = null, code = null;
+  const close = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  md.split("\n").forEach(l => {
+    if (code !== null) { if (/^```/.test(l)) { out.push(`<pre style="white-space:pre-wrap">${esc(code.join("\n"))}</pre>`); code = null; } else code.push(l); return; }
+    if (/^```/.test(l)) { close(); code = []; return; }
+    let m;
+    if ((m = /^(#{1,4})\s+(.*)/.exec(l))) { close(); const n = Math.min(4, m[1].length + 1); out.push(`<h${n}>${inl(m[2])}</h${n}>`); return; }
+    if ((m = /^\s*[-*]\s+(.*)/.exec(l))) { if (list !== "ul") { close(); out.push("<ul>"); list = "ul"; } out.push(`<li>${inl(m[1])}</li>`); return; }
+    if ((m = /^\s*\d+[.)]\s+(.*)/.exec(l))) { if (list !== "ol") { close(); out.push("<ol>"); list = "ol"; } out.push(`<li>${inl(m[1])}</li>`); return; }
+    if (/^\s*\|/.test(l)) { close(); if (!/^\s*\|[\s:|-]+\|\s*$/.test(l)) out.push(`<div class="mdrow">${l.split("|").slice(1, -1).map(c => `<span>${inl(c.trim())}</span>`).join("")}</div>`); return; }
+    if (!l.trim()) { close(); return; }
+    close(); out.push(`<p>${inl(l)}</p>`);
+  });
+  close(); return out.join("");
+}
+async function showGuide() {
+  let txt = ""; try { const r = await fetch("GUIDA.md", { cache: "no-cache" }); if (!r.ok) throw 0; txt = await r.text(); } catch (e) { return toast("Non riesco a leggere la guida"); }
+  openSheet(`<div class="guide">${mdLite(txt)}</div><div class="actions"><button class="btn" data-close>Chiudi</button></div>`);
+}
 function showImport() {
-  screen(`${logoSvg()}<h2>Collegato. Manca solo dati.json</h2><div class="muted">Nella cartella <b>Finanze</b> del tuo Google Drive non c'è ancora dati.json. Caricalo da qui: scegli il file dati.json che ti ho mandato.</div>
-    <input type="file" id="importfile" accept=".json,application/json" hidden><button class="btn primary" data-act="import">Carica dati.json</button><button class="btn" onclick="location.reload()">Riprova</button>`);
+  if (!ART) {
+    screen(`${logoSvg()}<h2>Collegato! Ora i dati</h2><div class="muted">Nella cartella <b>Finanze</b> del tuo Google Drive non ci sono ancora dati. Se parti da zero scegli <b>Inizia da zero</b>; se hai già un file dati.json, caricalo.</div>
+      <input type="file" id="importfile" accept=".json,application/json" hidden><button class="btn primary" data-act="zero">Inizia da zero</button><button class="btn" data-act="import">Carica un dati.json</button><button class="btn" data-act="guida">Leggi la guida</button>`);
+  } else screen(`${logoSvg()}<h2>${ART ? "Manca solo dati.json" : "Collegato. Manca solo dati.json"}</h2><div class="muted">${ART ? "La prima volta carica il tuo file dati.json: da lì in poi i dati restano salvati in questa pagina." : "Nella cartella <b>Finanze</b> del tuo Google Drive non c'è ancora dati.json. Caricalo da qui: scegli il file dati.json che ti ho mandato."}</div>
+    <input type="file" id="importfile" accept=".json,application/json" hidden><button class="btn primary" data-act="import">Carica dati.json</button>`);
   $("#importfile").onchange = async ev => {
     const f = ev.target.files[0]; if (!f) return;
     try { const data = JSON.parse(await f.text()); if (!Array.isArray(data.movimenti) || !data.config) throw new Error("File non valido");
-      toast("Carico…"); const j = await api("save", { baseRev: 0, data, create: true }); if (!j.ok) throw new Error("Caricamento non riuscito");
+      toast("Carico…");
+      if (ART) { S.data = data; S.etag = 1; await flushArt(); render(); toast("Dati caricati"); return; }
+      const j = await api("save", { baseRev: 0, data, create: true }); if (!j.ok) throw new Error("Caricamento non riuscito");
       S.data = data; S.etag = j.rev; persistCache(); render(); updateSheet(false); toast("Dati caricati");
     } catch (e) { toast(e.message); }
   };
@@ -1099,13 +1263,16 @@ async function refresh() {
     if (j.rev !== S.etag || !S.data) { S.data = j.data; S.etag = j.rev; S.pending.forEach(op => apply(S.data, op)); persistCache(); render(); }
     if (S.pending.length) flush(); else setSync("ok");
     if (j.sheetStale) updateSheet(false); // prices were updated by the daily job on Google: rebuild the sheet
+    S.serale = j.serale; // undefined with a 1.0 script
+    autoPrezzi();
   } catch (e) {
     if (e.setup) { if (!S.data) return showSetup(e.message); setSync("setup"); return; }
     setSync(navigator.onLine ? "err" : "offline");
-    if (!S.data) screen(`<h2>Google Drive non risponde</h2><div class="muted">${esc(e.message)}</div><button class="btn primary" onclick="location.reload()">Riprova</button><button class="btn" data-act="setup">Controlla il collegamento</button>`);
+    if (!S.data) screen(`<h2>Google Drive non risponde</h2><div class="muted">${esc(e.message)}</div><button class="btn primary" data-act="reload">Riprova</button><button class="btn" data-act="setup">Controlla il collegamento</button>`);
   }
 }
 async function start() {
+  if (ART) return startArt();
   if (TEST) { S.data = TEST.data; S.etag = 1; render(); setSync("ok"); return; }
   if (!S.cfg.url || !S.cfg.key) return showSetup();
   const cache = load(LS.cache);
@@ -1113,7 +1280,7 @@ async function start() {
   else screen(`${logoSvg()}<div class="muted">Carico i dati da Google Drive…</div>`);
   await refresh();
 }
-if ("serviceWorker" in navigator && !TEST) navigator.serviceWorker.register("sw.js").catch(() => {});
+if ("serviceWorker" in navigator && !TEST && !ART) navigator.serviceWorker.register("sw.js").catch(() => {});
 window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); S.installEvt = e; if (route().name === "impostazioni") render(); });
 window.addEventListener("appinstalled", () => { S.installEvt = null; toast("App installata"); });
 start();

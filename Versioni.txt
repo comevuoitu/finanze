@@ -2,6 +2,17 @@ FINANZE - STORICO DELLE VERSIONI
 
 Accanto a ogni versione è indicato se va aggiornato anche lo script su Google (Code.gs).
 
+1.1 (25/11/2026)
+- La prima pagina è Movimenti, con in alto il riquadro del mese: entrate, uscite, saldo e barre degli ultimi sei mesi (toccandole cambi mese). Il Patrimonio ha la sua sezione in basso.
+- Nuovi colori: blu di Prussia come colore principale, verde pino per i pulsanti.
+- L'occhio in alto nasconde tutti gli importi; le percentuali restano visibili.
+- Sottocategorie mese per mese: da Statistiche, tocca una categoria e poi una sottocategoria per vedere quanto spendi ogni mese, la media mensile e il riepilogo anno per anno.
+- Prezzi automatici: i titoli con il codice Google Finance si aggiornano da soli all'apertura dell'app, una volta al giorno. Si possono scrivere più codici separati da spazio. L'aggiornamento serale si accende dalle Impostazioni.
+- Partenza da zero: chi collega l'app a un Google Drive senza dati sceglie "Inizia da zero" e trova categorie già pronte.
+- Guida dentro l'app (Impostazioni, "Guida", e nella schermata di collegamento), uguale al file GUIDA.md del kit.
+- Kit per altre persone: guida, script, file di dati vuoto e file dell'app.
+- Script Google: da aggiornare (nuovo Code.gs, versione 1.1) per l'aggiornamento serale dall'app e i codici multipli; senza aggiornarlo l'app funziona lo stesso.
+
 1.0 (24/11/2026)
 - Prima versione, nata dal file Gestione finanziaria e da Money Manager.
 - Patrimonio: valore complessivo con grafico che si allunga da solo, divisione tra depositi, titoli, fondo pensione e liquidità.
