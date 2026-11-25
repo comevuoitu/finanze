@@ -1,13 +1,13 @@
 {
-  "id": "finanze-personali",
-  "name": "Finanze",
-  "short_name": "Finanze",
-  "description": "Patrimonio, investimenti, entrate e uscite",
+  "id": "spese-di-casa",
+  "name": "Spese di casa",
+  "short_name": "Spese casa",
+  "description": "Condominio, bollette e scadenze di casa",
   "start_url": "./?app",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#003153",
-  "theme_color": "#003153",
+  "background_color": "#eef2f6",
+  "theme_color": "#2a6fdb",
   "lang": "it",
   "icons": [
     {
@@ -27,56 +27,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
-    }
-  ],
-  "shortcuts": [
-    {
-      "name": "Nuova uscita",
-      "short_name": "Uscita",
-      "url": "./?app#nuovo",
-      "icons": [
-        {
-          "src": "icons/sc-uscita.png",
-          "sizes": "96x96",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
-      "name": "Nuova entrata",
-      "short_name": "Entrata",
-      "url": "./?app#nuova-entrata",
-      "icons": [
-        {
-          "src": "icons/sc-entrata.png",
-          "sizes": "96x96",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
-      "name": "Statistiche",
-      "short_name": "Statistiche",
-      "url": "./?app#statistiche",
-      "icons": [
-        {
-          "src": "icons/sc-statistiche.png",
-          "sizes": "96x96",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
-      "name": "Patrimonio",
-      "short_name": "Patrimonio",
-      "url": "./?app#patrimonio",
-      "icons": [
-        {
-          "src": "icons/sc-patrimonio.png",
-          "sizes": "96x96",
-          "type": "image/png"
-        }
-      ]
     }
   ]
 }
