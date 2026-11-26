@@ -2,6 +2,23 @@ FINANZE - STORICO DELLE VERSIONI
 
 Accanto a ogni versione è indicato se va aggiornato anche lo script su Google (Code.gs).
 
+2.0 (26/11/2026)
+- Nuova sezione Comuni, come Splitwise: gruppi con nome, colore o immagine, valuta e persone; spese pagate da una o più persone e divise in parti uguali, per importi, per percentuali o per quote; pagamenti tra persone; saldi e "chi deve a chi" con il numero minimo di passaggi, valuta per valuta; ricerca; gruppi archiviati; Excel per gruppo e di tutti i gruppi.
+- Conti in centesimi interi: i centesimi che avanzano vanno a chi ha la parte decimale più grande, a parità a chi viene prima nell'elenco del gruppo. Il totale torna sempre al centesimo.
+- Import da Splitwise (file .csv di ogni gruppo) con anteprima e controllo finale dei saldi con la riga "Total balance".
+- Inviti: un link per gruppo, con permesso "solo guardare" oppure "può aggiungere e modificare". Chi lo apre vede solo quel gruppo. I link si revocano uno per uno. Il controllo lo fa lo script.
+- Casella "Aggiungi la mia quota ai Movimenti" nelle spese di gruppo (spenta di partenza).
+- Patrimonio e Investimenti uniti in un'unica sezione Patrimonio. In basso: Movimenti, Statistiche, +, Comuni, Patrimonio.
+- Convivenza con altre app sullo stesso indirizzo (per esempio nome.github.io): chiavi del browser con il prefisso "finanze." (quelle vecchie "fin." si spostano da sole) e cache con il prefisso "finanze-"; l'app non tocca quelle delle altre app.
+- Nei dati: si aggiunge solo l'elenco delle persone; tutto il resto resta com'è.
+- - Import da Splitwise: legge anche i file in italiano (Data, Descrizione, Bilancio totale, Pagamento) e importa più gruppi in una volta, con la stessa persona in tutti i gruppi e l'archivio automatico dei gruppi in pari.
+Script Google: DA AGGIORNARE (Code.gs 2.0). Senza aggiornarlo l'app funziona come prima, ma la sezione Comuni avvisa che serve la 2.0.
+
+1.3 (25/11/2026)
+- Dove risparmiare (da Statistiche e da Investimenti): entrate e uscite medie degli ultimi 12 mesi, quanto resta al mese, spese fisse e variabili, cursori per provare a ridurre le spese variabili, piccole spese frequenti che pesano di più, e quanto puoi accantonare al mese. Le entrate si possono scrivere a mano se non sono tutte nell'app.
+- Piano di accumulo (da Investimenti): quanto può diventare un versamento al mese in tre scenari, con costi dei fondi, tasse, inflazione, obiettivo da raggiungere e divisione del versamento tra le classi del Ribilanciamento.
+- Script Google: non serve aggiornarlo (resta la 1.1).
+
 1.2 (25/11/2026)
 - Scorciatoie su Android: tenendo premuta l'icona dell'app compaiono Nuova uscita, Nuova entrata, Statistiche e Patrimonio; si possono trascinare nella schermata Home come icone a sé.
 - Script Google: non serve aggiornarlo (resta la 1.1).
