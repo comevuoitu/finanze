@@ -270,3 +270,7 @@ body.guest .tabs a { display: none; }
 .srow b { min-width: 80px; text-align: right; color: var(--muted); }
 details.arch summary { cursor: pointer; font-weight: 750; color: var(--muted); padding: 6px 0 10px; }
 .btn[disabled] { opacity: .5; }
+/* 2.1: person filter and order of the groups */
+.gfilt { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; margin: 16px 0 4px; }
+.gfilt select { width: 100%; min-width: 0; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-weight: 700; font-size: 15px; }
+.gfilt .seg button { padding: 8px 10px; white-space: nowrap; }

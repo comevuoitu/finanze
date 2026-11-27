@@ -1,6 +1,6 @@
 # Finanze: guida per iniziare
 
-Versione della guida: 2.0. Vale per l'app 2.0 e per lo script `Code.gs` 2.0.
+Versione della guida: 2.2. Vale per l'app 2.2 e per lo script `Code.gs` 2.2.
 
 Questa guida è scritta per essere seguita da una persona oppure da un assistente AI che aiuta una persona. Ogni passaggio dice cosa fare, cosa si deve vedere alla fine e cosa fare se non succede. I nomi dei pulsanti sono scritti come compaiono sullo schermo, in italiano e, tra parentesi, in inglese, perché Google può mostrare l'una o l'altra lingua.
 
@@ -121,13 +121,13 @@ In basso ci sono quattro sezioni e, al centro, il pulsante **+**. Il **+** aggiu
 
 ## Primi passi
 
-- **Un movimento:** tocca **+**, scegli **Uscita** o **Entrata**, scrivi l'importo, scegli categoria, sottocategoria e conto, poi **Salva**. Valuta diversa dall'euro: scegli la valuta accanto all'importo; l'app mostra il controvalore in euro e puoi correggere il cambio.
+- **Un movimento:** tocca **+**, scegli **Uscita**, **Entrata** o **Giroconto**, scrivi l'importo, scegli categoria, sottocategoria e conto (per il giroconto: da quale conto a quale), poi **Salva**. Valuta diversa dall'euro: scegli la valuta accanto all'importo; l'app mostra il controvalore in euro e puoi correggere il cambio.
 - **Nuove categorie, sottocategorie e conti:** direttamente nel modulo del movimento con **+ Nuova**, oppure in **Impostazioni**, **Categorie e sottocategorie** e **Conti**. Rinominando una categoria o un conto si aggiornano anche tutti i movimenti. Una categoria con movimenti si toglie spostando i suoi movimenti in un'altra.
 - **Valute:** in **Impostazioni**, **Valute e cambi**: quanti euro vale 1 unità di ogni valuta.
 - **Titoli:** in **Patrimonio**, **Aggiungi un titolo** (oppure **Impostazioni**, **Aggiungi un titolo**). Scrivi nome, ISIN, classe (Azioni, Obbligazioni e così via), valuta del prezzo e, se vuoi i prezzi automatici, il codice Google Finance (vedi sotto). Poi **Nuovo acquisto** per ogni acquisto: data, quote, prezzo medio. Quote, carico e guadagno li calcola l'app. Per una vendita scrivi le quote con il meno davanti.
 - **Depositi vincolati:** in **Patrimonio**, la riga dei depositi, poi **Aggiungi**: importo, tasso lordo, inizio e scadenza.
 - **Fondo pensione:** in **Patrimonio**, la riga del fondo: **Aggiorna posizione** (posizione e versato dall'area riservata), **Modifica anni** (dagli estratti annuali: versato, risultato, valore quota), **Rendimenti e costi** (TER e confronto con il benchmark).
-- **Liquidità:** in **Patrimonio**, la riga Liquidità, **Aggiorna saldi**: i saldi dei conti e i soldi da investire.
+- **Liquidità:** in **Patrimonio**, la riga Liquidità, **Aggiorna saldi**: i saldi dei conti e i soldi da investire. Un conto può anche aggiornarsi da solo con i movimenti: vedi "Conti e saldi".
 - **Ribilanciamento:** in **Patrimonio**, **Ribilanciamento**: imposta gli obiettivi per classe (devono fare 100%) e la liquidità da investire; l'app dice quanto comprare di ogni titolo. Un titolo segnato "resta com'è" non viene toccato.
 - **Fondo di emergenza:** in **Patrimonio**, **Fondo di emergenza**: spese mensili e mesi di copertura. L'app propone la media delle tue uscite degli ultimi 12 mesi.
 - **Dove risparmiare:** in **Statistiche** (oppure in **Patrimonio**, sezione Strumenti) tocca **Dove risparmiare**. L'app usa gli ultimi 12 mesi interi: entrate e uscite medie, quanto resta al mese, spese fisse e variabili, e le piccole spese frequenti che pesano di più. Su ogni spesa variabile c'è un cursore: spostalo per vedere quanto risparmieresti riducendola. Tocca "fissa" o "variabile" per cambiare il tipo di una categoria. Se non tutte le tue entrate passano dall'app, tocca **Scrivi le entrate reali**: il calcolo di quanto puoi accantonare diventa giusto.
@@ -151,6 +151,28 @@ Come si aggiornano:
 
 Per sicurezza, un prezzo che si discosta di più del 30% dal precedente non viene salvato in automatico: di solito vuol dire un codice sbagliato o una valuta diversa. Ogni aggiornamento aggiunge un punto al grafico del Patrimonio.
 
+## Conti e saldi
+
+All'inizio i saldi della liquidità si scrivono a mano. Ogni conto può anche **seguire i movimenti**, così il saldo si aggiorna da solo.
+
+1. In **Patrimonio**, tocca la riga **Liquidità**, poi un conto (o **Nuovo conto**).
+2. Scrivi il **saldo vero**, come lo vedi in banca, e la data a cui si riferisce (di solito oggi).
+3. Lascia la spunta **Aggiorna il saldo con i movimenti** e scegli i **modi di pagamento che passano da qui**: per esempio carta di debito e bonifici per il conto corrente. Contanti, buoni pasto e simili lasciali fuori, oppure fanne un conto a sé.
+4. **Salva.**
+
+Da quel momento cambiano il saldo:
+
+- le **entrate** e le **uscite** con quel conto o con uno dei suoi modi di pagamento;
+- i **giroconti** (il **+**, poi **Giroconto**): soldi spostati tra due conti, per esempio un prelievo dal conto ai contanti. Non sono né entrate né uscite e non entrano nelle statistiche;
+- gli **acquisti di titoli** con "Pagato dal conto" (per una vendita, con le quote negative, il ricavato entra nel conto);
+- i **depositi** con "Soldi presi dal conto". Quando una linea scade, aprila e tocca **Scaduto: rimetti … sul conto**: la linea sparisce e i soldi tornano sul conto. Gli interessi registrali come entrata.
+
+**Quando il numero non torna.** Il saldo calcolato è giusto solo se registri tutto quello che passa dal conto. Quando controlli la banca, scrivi il saldo vero (dal conto oppure con **Aggiorna saldi**): l'app ti dice la differenza con quello calcolato e riparte da lì. Niente si conta due volte: quello che era già registrato fino a quel momento resta dentro il saldo scritto.
+
+Toccando un conto vedi i suoi movimenti con il saldo; **Correggi o collega** riapre le impostazioni del conto. Rinominando un conto si aggiornano anche movimenti, acquisti e depositi che lo usano.
+
+Nei giroconti ci sono due voci speciali, che non sono conti: **Spese comuni** (soldi anticipati per altri o restituiti nei gruppi) e **Investimenti** (soldi che vanno o tornano da titoli e depositi, quando non li registri da lì).
+
 ## Spese comuni
 
 Funziona come Splitwise: ogni gruppo ha le sue persone, le sue spese e i suoi saldi. Si apre dalla sezione **Comuni** in basso.
@@ -166,7 +188,20 @@ Funziona come Splitwise: ogni gruppo ha le sue persone, le sue spese e i suoi sa
 
 **Risultato atteso:** si apre il gruppo vuoto e su Google Drive, nella cartella **Finanze/spese-comuni**, compare un file nuovo.
 
-Nella pagina del gruppo, **Gruppo** apre le impostazioni: nome, colore, immagine, valuta, persone (si toglie solo chi non ha spese), **Archiviato** (il gruppo sparisce dall'elenco ma resta consultabile in fondo, in "Gruppi archiviati") ed **Elimina il gruppo** (una copia resta nei backup su Drive).
+Nella pagina del gruppo, **Gruppo** apre le impostazioni: nome, colore, immagine, valuta e persone (si toglie solo chi non ha spese).
+
+### Trovare i gruppi: filtro per persona e ordine
+
+Sotto i pulsanti di Comuni ci sono due comandi:
+
+- **Tutte le persone**: scegli una persona e vedi solo i gruppi in cui c'è. In alto compare "Con *nome*" con il saldo tra te e lei in tutti i gruppi; in ogni riga vedi quanto vi dovete in quel gruppo. Il saldo tra due persone segue "chi deve a chi" del gruppo: nei gruppi di due persone è esattamente il saldo; nei gruppi più grandi è quanto passa tra voi due nel modo più breve per mettere tutti in pari.
+- **Ultima spesa / A-Z**: ordina i gruppi per data dell'ultima spesa (i più recenti in cima) oppure in ordine alfabetico. L'app ricorda la scelta.
+
+### Archivio e cestino
+
+- **Metti in archivio**, in fondo alla pagina del gruppo: il gruppo sparisce dall'elenco ma resta consultabile in "Gruppi archiviati", in fondo a Comuni. Dallo stesso pulsante lo togli dall'archivio. Nell'elenco, **Metti in archivio i gruppi in pari** archivia in un colpo tutti i gruppi in cui nessuno deve niente a nessuno.
+- **Elimina il gruppo**, in fondo alla pagina del gruppo (o nelle impostazioni del gruppo): chiede conferma e mette il gruppo nel **Cestino**, in fondo a Comuni. Per 30 giorni puoi toccare **Recupera** e il gruppo torna com'era, con tutte le spese e gli inviti. Intanto nessuno lo può modificare e i link di invito non funzionano. Dopo 30 giorni sparisce da solo; su Drive ne resta una copia nei backup. **Elimina per sempre** (due tocchi) lo toglie subito.
+- Se sei invitato, il pulsante si chiama **Togli da questa app**: il gruppo va nel cestino solo sul tuo telefono, per chi te l'ha condiviso non cambia niente.
 
 ### Aggiungere e dividere una spesa
 
@@ -180,7 +215,7 @@ Nella pagina del gruppo, **Gruppo** apre le impostazioni: nome, colore, immagine
    - **Quote**: per esempio 2 a te e 1 ad Anna, cioè due terzi e un terzo.
    Accanto a ogni persona compare la sua parte. Sotto c'è scritto "Il totale torna al centesimo" oppure cosa manca: finché non torna, la spesa non si salva.
 5. Facoltativi: data, categoria, note.
-6. **Aggiungi la mia quota ai Movimenti** (spenta di partenza): se la spunti, la tua parte diventa anche un'uscita nei Movimenti, con la categoria scelta, così le statistiche dei tuoi soldi restano complete.
+6. **Aggiungi ai miei Movimenti** (spenta di partenza, solo nei tuoi gruppi): se la spunti scegli **categoria**, **sottocategoria** e **conto** del movimento. Nelle statistiche entra la **tua parte**; dal conto esce **quello che hai pagato tu**. Esempio: paghi 30 € una cena per due, la tua parte è 15 €: nelle uscite entrano 15 €, dal conto escono 30 €, e i 15 € in più ti sono dovuti nel gruppo. Se paghi solo per gli altri, diventa un giroconto verso "Spese comuni". L'app scrive sotto la casella cosa succederà.
 7. Tocca **Salva**.
 
 **Come si arrotonda.** I conti sono fatti in centesimi interi. Quando una divisione non torna esatta, ognuno riceve prima la sua parte arrotondata per difetto; i centesimi che avanzano vanno, uno a testa, a chi ha la parte decimale più grande, e a parità a chi viene prima nell'elenco delle persone del gruppo. Per esempio 10,00 € in tre parti uguali fanno 3,34 + 3,33 + 3,33: il centesimo in più va alla prima persona dell'elenco. Il totale torna sempre al centesimo.
@@ -196,6 +231,8 @@ Per modificare o eliminare una spesa, toccala nell'elenco. **Elimina** chiede di
 - **Excel**: nel gruppo scarica un file con tre fogli (Spese con la divisione per persona, Saldi, Chi deve a chi); in **Comuni** (o in **Impostazioni**) c'è l'Excel con tutti i gruppi insieme.
 
 Le spese si possono aggiungere anche senza rete: restano sul telefono e partono appena torna la connessione (in alto in Comuni compare "N modifiche da salvare"). Creare un gruppo, invitare e importare richiedono la rete.
+
+Quando **registri un pagamento** che riguarda te (ti restituiscono dei soldi o li restituisci tu), puoi spuntare **Registra anche nei miei Movimenti** e scegliere il conto: diventa un giroconto tra il conto e "Spese comuni", che cambia il saldo ma non entra nelle statistiche.
 
 ### Importare un gruppo da Splitwise
 
@@ -315,13 +352,16 @@ Se cambi l'indirizzo dell'app (nuovo servizio o nuovo nome), su ogni dispositivo
 |---|---|
 | "L'indirizzo deve iniziare con https://script.google.com/macros/s/ e finire con /exec" | Hai incollato l'indirizzo sbagliato. Copia quello sotto "Applicazione web" (passo 2, punto 5). |
 | "Chiave sbagliata" | La chiave nell'app è diversa da quella nello script. Controlla maiuscole, minuscole e spazi. |
+| Su un dispositivo (per esempio il computer) non vedi le novità | In **Impostazioni**, in fondo, **Novità e versioni** mostra la versione. Se è vecchia, ricarica la pagina forzando: sul Mac Cmd+Maiusc+R, su Windows Ctrl+F5; sul telefono chiudi l'app del tutto e riaprila. Aggiorna tutti i dispositivi: una versione vecchia non conosce i campi nuovi e, salvando i saldi, può togliere i collegamenti dei conti. |
+| Il saldo calcolato di un conto non torna con la banca | Manca qualche movimento, oppure un modo di pagamento non è collegato al conto giusto. Scrivi il saldo vero: l'app mostra la differenza e riparte da lì. |
 | "Nello script manca la chiave: cambiala nella prima riga e ripubblica" | Nello script c'è ancora `SCRIVI-QUI-LA-TUA-CHIAVE`. Mettila, salva e pubblica una nuova versione (vedi "Aggiornare lo script"). |
 | "Risposta non valida: controlla l'indirizzo dello script e che sia pubblicato per Chiunque" | In "Chi ha accesso" non c'è "Chiunque", oppure l'indirizzo non è quello `/exec`. Rifai il passo 2. |
 | "Impossibile aprire il file in questo momento" durante il deployment | Sei collegato con più account Google: rifai il passo 2 in una finestra privata con un solo account. |
 | "Google Drive non raggiungibile" | Manca la rete. L'app continua a funzionare e salva appena torna la rete. |
 | Un titolo dice "non trovato su Google" | Il codice Google Finance non è giusto o quella borsa non è coperta. Prova un'altra borsa, o scrivi più codici separati da spazio. |
 | Un prezzo automatico è molto diverso da quello della banca | Il codice punta a una borsa con un'altra valuta. Controlla la valuta del prezzo nel titolo. |
-| In Comuni compare "Lo script Google è di una versione precedente" | Lo script non è la 2.0. Segui "Aggiornare lo script". |
+| In Comuni compare "Lo script Google è di una versione precedente" | Lo script non è la 2.1. Segui "Aggiornare lo script". |
+| Eliminando un gruppo compare "Per il cestino aggiorna lo script Google alla versione 2.1" | Lo script è ancora la 2.0. Segui "Aggiornare lo script". |
 | "Invito non valido o revocato" | Il link è stato revocato, oppure è stato copiato a metà. Chiedi un link nuovo. |
 | Hai aperto il link di invito ma nell'app installata il gruppo non c'è | Su iPhone il link si apre in Safari. Apri Finanze dalla Home, **Comuni**, **Ho un link di invito**, e incolla il link. |
 | In Comuni compare "N modifiche da salvare" | Le spese aggiunte senza rete partono quando torna la connessione. Se resta a lungo, apri l'app con la rete attiva. |
@@ -342,22 +382,22 @@ Fatti utili per aiutare qualcuno a configurare o a risolvere un problema. Non se
 
 - L'app è una PWA statica (HTML, CSS, JavaScript) senza server proprio. Non ha dati personali nel codice. Usa la libreria ExcelJS (in `lib/`) per leggere l'export di Money Manager e scrivere l'Excel.
 - L'app chiama lo script con richieste `POST` all'indirizzo `/exec`, con corpo JSON inviato come `text/plain` (così il browser non fa la richiesta preliminare CORS). Il corpo contiene `key` (la chiave) e `action`.
-- Azioni dello script con la chiave principale, per le spese comuni: `g_lista` (tutti i gruppi), `g_crea` (nuovo gruppo, anche con le voci importate), `g_op` (una modifica a un gruppo), `g_elimina`, `g_invito` (crea un codice di invito; lo restituisce una sola volta), `g_revoca`.
+- Azioni dello script con la chiave principale, per le spese comuni: `g_lista` (tutti i gruppi), `g_crea` (nuovo gruppo, anche con le voci importate), `g_op` (una modifica a un gruppo), `g_cestina` e `g_ripristina` (mettono e tolgono `cestino`, la data in cui il gruppo è finito nel cestino), `g_svuota` (elimina subito un gruppo già nel cestino), `g_elimina` (eliminazione diretta, rimasta per le app 2.0), `g_invito` (crea un codice di invito; lo restituisce una sola volta), `g_revoca`.
 - Azioni per gli invitati, **senza** chiave principale: `o_leggi` e `o_op`, con `gid` (il gruppo) e `codice` (il codice di invito). Lo script calcola l'impronta SHA-256 del codice con un sale e la confronta con quelle salvate nel file del gruppo; risponde solo con quel gruppo, senza inviti né impronte. `o_op` accetta solo `voce` (aggiungi o modifica una spesa o un pagamento) ed `elimina`, e solo se l'invito ha il permesso `modifica`. Con un codice di invito tutte le altre azioni rispondono `{"error":"chiave"}`.
 - Ogni modifica a un gruppo ha un `id` unico: se arriva due volte (per esempio dopo un problema di rete) conta una volta sola. Lo script controlla ogni voce: persone del gruppo, importi in centesimi interi, somma di chi ha pagato uguale alla somma delle parti, uguale al totale (le voci importate da Splitwise, segnate `imp`, devono solo avere le due somme uguali).
 - Azioni dello script: `load` (legge i dati; risponde anche se il foglio va ricostruito e se l'aggiornamento serale è attivo), `save` (salva tutto il file, con controllo di versione), `sheet` (ricrea il foglio di riepilogo con le tabelle calcolate dall'app), `prezzi` (prezzi da Google Finance per una lista di codici e cambi verso l'euro), `serale` (accende o spegne l'aggiornamento serale), `backups` (elenco dei backup), `restore` (ripristino). Una richiesta `GET` all'indirizzo `/exec` risponde solo con "Il ponte Finanze è attivo." e serve come controllo.
 - I prezzi si leggono scrivendo formule `GOOGLEFINANCE(codice,"price")` in un foglio nascosto `_prezzi` del foglio di riepilogo. L'aggiornamento serale è un attivatore a tempo dello script (funzione `aggiornamentoSerale`), che si può gestire anche dall'editor con `attivaAggiornamentoSerale` e `disattivaAggiornamentoSerale`.
 - Risposte di errore dello script: `{"error":"chiave"}` se la chiave non corrisponde; `{"notFound":true}` se `dati.json` non esiste ancora (l'app allora propone "Inizia da zero"); `{"conflict":true,...}` se un altro dispositivo ha salvato nel frattempo (l'app unisce le modifiche da sola).
 - File su Google Drive: cartella `Finanze` nella radice del Drive, con `dati.json`, il foglio `Finanze (riepilogo)`, la sottocartella `spese-comuni` (un file `<codice del gruppo>.json` per gruppo) e la sottocartella `backup` (con dentro `spese-comuni`).
-- Struttura di un gruppo: `id`, `nome`, `colore`, `img` (immagine piccola, facoltativa), `valuta`, `archiviato`, `membri` (`pid`, `nome`; l'ordine decide a chi vanno i centesimi in più), `voci` (`id`, `tipo` `spesa` o `pagamento`, `desc`, `data`, `valuta`, `tot`, `pag` = chi ha pagato e quanto, `quo` = la parte di ciascuno, tutto in centesimi; facoltativi `cat`, `note`, `div` = il modo di divisione, `imp` = importata da Splitwise), `rev`, `inviti` (`id`, `perm`, `nome`, `creato`, `sale`, `hash`: mai il codice in chiaro). Il saldo di una persona è la somma di quanto ha pagato meno la somma delle sue parti.
+- Struttura di un gruppo: `id`, `nome`, `colore`, `img` (immagine piccola, facoltativa), `valuta`, `archiviato`, `cestino` (facoltativo: data e ora in cui è finito nel cestino; con questo campo lo script rifiuta modifiche e inviti, e `g_lista` elimina i gruppi che ci sono da più di 30 giorni, dopo averne fatto una copia nei backup), `membri` (`pid`, `nome`; l'ordine decide a chi vanno i centesimi in più), `voci` (`id`, `tipo` `spesa` o `pagamento`, `desc`, `data`, `valuta`, `tot`, `pag` = chi ha pagato e quanto, `quo` = la parte di ciascuno, tutto in centesimi; facoltativi `cat`, `note`, `div` = il modo di divisione, `imp` = importata da Splitwise), `rev`, `inviti` (`id`, `perm`, `nome`, `creato`, `sale`, `hash`: mai il codice in chiaro). Il saldo di una persona è la somma di quanto ha pagato meno la somma delle sue parti.
 - In `dati.json` la versione 2.0 aggiunge solo `persone` (`pid`, `nome`, `nota`, `io` per sé stessi). L'aggiunta parte una volta, solo se manca, e non cambia nient'altro.
 - Il link di invito è `indirizzo dell'app#invito=<script>.<gruppo>.<codice>`: tutto dopo il `#`, quindi non arriva nei log dei server. `<script>` è la parte dell'indirizzo `/exec` tra `/s/` e `/exec`.
-- Sul dispositivo l'app tiene solo l'indirizzo dello script, la chiave, alcune preferenze (per esempio gli importi nascosti), una copia dei dati e dei gruppi per funzionare offline, le modifiche ai gruppi non ancora salvate e gli inviti ricevuti. Tutte le chiavi del browser iniziano con `finanze.` (fino alla 1.3 iniziavano con `fin.`: la 2.0 le sposta da sola) e le cache del service worker con `finanze-`; l'app non legge e non cancella altro, perché sullo stesso indirizzo possono esserci altre app. "Scollega questo dispositivo" in Impostazioni cancella tutto questo.
+- Sul dispositivo l'app tiene solo l'indirizzo dello script, la chiave, alcune preferenze (per esempio gli importi nascosti e l'ordine dei gruppi), una copia dei dati e dei gruppi per funzionare offline, le modifiche ai gruppi non ancora salvate e gli inviti ricevuti. Tutte le chiavi del browser iniziano con `finanze.` (fino alla 1.3 iniziavano con `fin.`: la 2.0 le sposta da sola) e le cache del service worker con `finanze-`; l'app non legge e non cancella altro, perché sullo stesso indirizzo possono esserci altre app. "Scollega questo dispositivo" in Impostazioni cancella tutto questo.
 - Struttura di `dati.json`:
-  - `movimenti`: ognuno con `id`, `d` (data e ora `AAAA-MM-GGTHH:MM`), `t` (`u` uscita, `e` entrata), `c` categoria, `s` sottocategoria, `n` nota, `a` conto, `e` importo in euro; per le valute estere anche `cur` (valuta) e `v` (importo in valuta).
+  - `movimenti`: ognuno con `id`, `d` (data e ora `AAAA-MM-GGTHH:MM`), `t` (`u` uscita, `e` entrata, `g` giroconto), `c` categoria (`Giroconto` per i giroconti), `s` sottocategoria, `n` nota, `a` conto (per il giroconto: il conto da cui escono i soldi), `a2` (solo giroconto: il conto in cui entrano), `e` importo in euro; facoltativo `x` (solo uscite: l'importo uscito davvero dal conto, quando è diverso dalla spesa, per esempio nelle spese di gruppo); per le valute estere anche `cur` (valuta) e `v` (importo in valuta). I giroconti non entrano in entrate, uscite e statistiche.
   - `categorie`: `u` (uscite) ed `e` (entrate), ognuna con `nome`, `colore`, `sub` (sottocategorie). `conti`: elenco dei conti.
-  - `titoli` (`nome`, `breve`, `isin`, `classe`, `prezzo`, `prezzoAl`, `valuta`, `ticker`, `mantieni`), `acquisti` (`titolo`, `data`, `quote`, `prezzo`, `nota`), `depositi` (`nome`, `inizio`, `importo`, `tasso`, `scadenza`, `svincolabile`), `fondo` (`posizione`, `posizioneAl`, `versato`, `ter`, `anni`, `rendimenti`), `storico` (un punto al giorno del valore di depositi, titoli, carico, fondo, versato e liquidità).
-  - `config`: nomi delle sezioni, ritenuta, bollo, tassa sulle plusvalenze, liquidità, liquidità da investire, obiettivi per classe, soglia, spese mensili e mesi del fondo di emergenza, valute e cambi, data dei prezzi.
+  - `titoli` (`nome`, `breve`, `isin`, `classe`, `prezzo`, `prezzoAl`, `valuta`, `ticker`, `mantieni`), `acquisti` (`titolo`, `data`, `quote`, `prezzo`, `nota`, facoltativo `conto`), `depositi` (`nome`, `inizio`, `importo`, `tasso`, `scadenza`, `svincolabile`, facoltativo `conto`), `fondo` (`posizione`, `posizioneAl`, `versato`, `ter`, `anni`, `rendimenti`), `storico` (un punto al giorno del valore di depositi, titoli, carico, fondo, versato e liquidità).
+  - `config`: nomi delle sezioni, ritenuta, bollo, tassa sulle plusvalenze, liquidità (`liquidi`: `id`, `nome`, `valore`; per i conti che seguono i movimenti anche `base`, il momento del saldo scritto, `metodi`, i modi di pagamento collegati, e `inclusi`, gli id già compresi nel saldo scritto. Saldo = `valore` + entrate − uscite (o `x`) ± giroconti − acquisti − depositi con data da `base` in poi, esclusi gli `inclusi`), liquidità da investire, obiettivi per classe, soglia, spese mensili e mesi del fondo di emergenza, valute e cambi, data dei prezzi.
 - Regole da rispettare quando si aiuta qualcuno:
   1. Non chiedere mai la chiave a voce alta in un canale pubblico e non scriverla in file che vanno sul sito.
   2. Non modificare `dati.json` a mano mentre l'app è aperta su un dispositivo: si rischia di perdere modifiche. Per correggere dati, usare l'app; per tornare indietro, usare i backup.

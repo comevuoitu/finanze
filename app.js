@@ -3,7 +3,7 @@
    Investments follow the logic of the "Gestione finanziaria" workbook; income and expenses follow Money Manager. */
 
 // ---------------------------------------------------------------- config & state
-const VERSION = "2.0";
+const VERSION = "2.2";
 // Browser storage is shared by every app on the same site (e.g. several apps on one github.io address):
 // all keys of this app start with "finanze." and nothing else is ever read, written or removed.
 const LS = { cfg: "finanze.cfg", cache: "finanze.cache", pref: "finanze.pref", gruppi: "finanze.gruppi", coda: "finanze.gcoda", inviti: "finanze.inviti" };
@@ -84,6 +84,44 @@ const catColor = (t, nome) => (catOf(t, nome) || {}).colore || "#7f8ea3";
 const COLORS = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#0ca30c", "#9085e9", "#e66767", "#2bb3c0", "#b07a4f", "#8fbf3a", "#7f8ea3"];
 const CLASS_COL = ["#4ea1ff", "#f0b13a", "#2fbf8f", "#b49cff", "#ff8fb1", "#5cc8ba"];
 
+// ---------------------------------------------------------------- account balances (2.2)
+// A liquidity account written by hand keeps its number. One that "follows the movements" starts from the balance
+// written at a moment (base) and adds what happened after it: income, expenses (the amount that left the account, x,
+// when it differs from the spending), transfers in and out, purchases and sales of titles, new deposits.
+// Movements count for an account when they use its name or one of the payment methods linked to it.
+// transfer sides outside the liquidity: money lent or given back in shared groups, money going to or coming from investments
+const FUORI = "Spese comuni", INVEST = "Investimenti", ESTERNI = [FUORI, INVEST];
+const dopoBase = (d, base) => (d.length === 10 ? d + "T12:00" : d) >= base;
+function usaConto(L, nome) { return !!nome && (nome === L.nome || (L.metodi || []).includes(nome)); }
+function effetto(m, L) { // what one movement does to one account
+  if (m.t === "e") return usaConto(L, m.a) ? m.e : 0;
+  if (m.t === "u") return usaConto(L, m.a) ? -(m.x != null ? m.x : m.e) : 0;
+  if (m.t === "g") return (usaConto(L, m.a2) ? m.e : 0) - (usaConto(L, m.a) ? m.e : 0);
+  return 0;
+}
+// When a true balance is written, whatever is already dated from that moment on is inside it: those ids are kept
+// in "inclusi" so they are not added twice (it matters for things registered in the same minute or for today).
+function inclusiAl(base, data = S.data) {
+  return data.movimenti.filter(m => m.d >= base).map(m => m.id)
+    .concat(data.acquisti.filter(a => a.data && dopoBase(a.data, base)).map(a => a.id), data.depositi.filter(d => d.inizio && dopoBase(d.inizio, base)).map(d => d.id));
+}
+const conta = (L, id, d) => !!L.base && dopoBase(d, L.base) && !(L.inclusi || []).includes(id);
+function saldiConti(data = S.data) {
+  const out = {};
+  (data.config.liquidi || []).forEach(L => {
+    if (!L.base) { out[L.id] = L.valore || 0; return; }
+    let v = L.valore || 0;
+    data.movimenti.forEach(m => { if (conta(L, m.id, m.d)) v += effetto(m, L); });
+    data.acquisti.forEach(a => { if (a.conto === L.nome && a.data && conta(L, a.id, a.data)) { const t = data.titoli.find(x => x.id === a.titolo) || {}; v -= a.quote * a.prezzo * fx(t.valuta, data); } });
+    data.depositi.forEach(d => { if (d.conto === L.nome && d.inizio && conta(L, d.id, d.inizio)) v -= d.importo; });
+    out[L.id] = r2(v);
+  });
+  return out;
+}
+// names a movement can use: the payment methods of the movements and the liquidity accounts
+const nomiConti = () => [...new Set(D().conti.concat((CF().liquidi || []).map(l => l.nome)))];
+const contoReale = nome => (CF().liquidi || []).find(L => L.base && usaConto(L, nome));
+
 // ---------------------------------------------------------------- the numbers (same formulas as the workbook)
 function calc(data = S.data) {
   const c = data.config, today = todayISO();
@@ -117,11 +155,11 @@ function calc(data = S.data) {
   if (qi.length >= 2) { const a = qi[0], b = qi[qi.length - 1], n = b - a; medio = Math.pow(righe[b].quota / righe[a].quota, 1 / n) - 1; medioLab = `${righe[a + 1].anno}–${righe[b].anno} (${n} anni)`; }
   const fondo = { posizione: f.posizione, versato: f.versato, risultato: f.posizione - f.versato, pct: f.versato ? (f.posizione - f.versato) / f.versato : 0, righe, medio, medioLab, costo: f.posizione * (f.ter || 0) };
   // riepilogo
-  const liquidi = sum(c.liquidi || [], l => l.valore), daInv = c.daInvestire || 0;
+  const saldi = saldiConti(data), liquidi = sum(c.liquidi || [], l => saldi[l.id]), daInv = c.daInvestire || 0;
   const investito = depTot + titValore + f.posizione, liquidita = liquidi + daInv, patrimonio = investito + liquidita;
   const R = { tit, titValore, titCarico, titGain: titValore - titCarico, titGainPct: titCarico ? (titValore - titCarico) / titCarico : 0,
     dep, depTot, depTasso: depTot ? sum(dep, d => d.importo * d.tasso) / depTot : 0, depLordo: sum(dep, d => d.lordo), depNetto: sum(dep, d => d.netto),
-    fondo, liquidi, daInv, investito, liquidita, patrimonio };
+    fondo, liquidi, daInv, investito, liquidita, patrimonio, saldi };
   R.gainTot = R.titGain + fondo.risultato; R.baseTot = titCarico + f.versato; R.gainTotPct = R.baseTot ? R.gainTot / R.baseTot : 0;
   R.ribil = ribilancia(data, R);
   R.emerg = emergenza(data, R);
@@ -183,9 +221,16 @@ function addCat(data, t, nome, sub) {
   if (!c) { c = { nome, colore: COLORS[L.length % COLORS.length], sub: [] }; L.push(c); }
   if (sub && !c.sub.includes(sub)) c.sub.push(sub);
 }
+function rinomina(data, da, a) { // one account or payment method changes name everywhere
+  data.movimenti.forEach(m => { if (m.a === da) m.a = a; if (m.a2 === da) m.a2 = a; });
+  data.acquisti.forEach(x => { if (x.conto === da) x.conto = a; });
+  data.depositi.forEach(x => { if (x.conto === da) x.conto = a; });
+  (data.config.liquidi || []).forEach(L => { if (L.metodi) L.metodi = [...new Set(L.metodi.map(n => n === da ? a : n))]; });
+  if (data.conti.includes(da)) data.conti = [...new Set(data.conti.map(x => x === da ? a : x))];
+}
 function apply(data, op) {
   const o = op.op;
-  if (o === "mov") { upsert(data.movimenti, op.item); addCat(data, op.item.t, op.item.c, op.item.s); if (op.item.a && !data.conti.includes(op.item.a)) data.conti.push(op.item.a); data.movimenti.sort((a, b) => b.d.localeCompare(a.d)); }
+  if (o === "mov") { upsert(data.movimenti, op.item); if (op.item.t !== "g") addCat(data, op.item.t, op.item.c, op.item.s); [op.item.a, op.item.a2].forEach(n => { if (n && !ESTERNI.includes(n) && !data.conti.includes(n)) data.conti.push(n); }); data.movimenti.sort((a, b) => b.d.localeCompare(a.d)); }
   if (o === "delmov") data.movimenti = data.movimenti.filter(x => x.id !== op.id);
   if (o === "import") { op.items.forEach(m => { data.movimenti.push(m); addCat(data, m.t, m.c, m.s); if (m.a && !data.conti.includes(m.a)) data.conti.push(m.a); }); data.movimenti.sort((a, b) => b.d.localeCompare(a.d)); }
   if (o === "catadd") addCat(data, op.t, op.nome, op.sub);
@@ -201,7 +246,8 @@ function apply(data, op) {
   }
   if (o === "catdel") data.categorie[op.t] = data.categorie[op.t].filter(x => x.nome !== op.nome);
   if (o === "catorder") { const L = data.categorie[op.t]; data.categorie[op.t] = op.names.map(n => L.find(x => x.nome === n)).filter(Boolean).concat(L.filter(x => !op.names.includes(x.nome))); }
-  if (o === "conto") { if (op.old) { data.conti = data.conti.map(x => x === op.old ? op.name : x); data.movimenti.forEach(m => { if (m.a === op.old) m.a = op.name; }); } else if (!data.conti.includes(op.name)) data.conti.push(op.name); data.conti = [...new Set(data.conti)]; }
+  if (o === "conto") { if (op.old) { data.conti = data.conti.map(x => x === op.old ? op.name : x); rinomina(data, op.old, op.name); } else if (!data.conti.includes(op.name)) data.conti.push(op.name); data.conti = [...new Set(data.conti)]; }
+  if (o === "rinliq") rinomina(data, op.old, op.name);
   if (o === "delconto") data.conti = data.conti.filter(x => x !== op.name);
   if (o === "titolo") upsert(data.titoli, op.item);
   if (o === "deltitolo") { data.titoli = data.titoli.filter(x => x.id !== op.id); data.acquisti = data.acquisti.filter(a => a.titolo !== op.id); }
@@ -483,10 +529,12 @@ ROUTES.liquidita = () => {
   const R = calc(), c = CF();
   return { title: "Liquidità", back: "patrimonio", tab: "patrimonio", html: `
     <section class="hero"><div class="lab"><span>Liquidità totale</span></div><div class="big num">${bigNum(R.liquidita)}</div></section>
-    <div class="group">${c.liquidi.map(l => `<div class="row" style="grid-template-columns:minmax(0,1fr) auto"><div class="t1">${esc(l.nome)}</div><div class="v num">${eur(l.valore)}</div></div>`).join("")}
+    <div class="group">${c.liquidi.map(l => `<button class="row" data-act="contoliq" data-id="${esc(l.id)}" style="grid-template-columns:minmax(0,1fr) auto auto"><div><div class="t1">${esc(l.nome)}</div>
+        <div class="t2">${l.base ? `segue i movimenti dal ${dmy(l.base.slice(0, 10))}${(l.metodi || []).length ? ", con " + esc(l.metodi.join(", ")) : ""}` : "saldo scritto a mano"}</div></div><div class="v num">${eur(R.saldi[l.id])}</div>${IC.chev}</button>`).join("")}
       <div class="row" style="grid-template-columns:minmax(0,1fr) auto"><div><div class="t1">Da investire</div><div class="t2">entra nel ribilanciamento</div></div><div class="v num">${eur(c.daInvestire)}</div></div></div>
-    <div class="note">Assumo che i soldi sui conti e quelli da investire siano diversi dai depositi vincolati.</div>
-    <button class="btn primary" data-act="liquidi">Aggiorna saldi</button>` };
+    <div class="actions"><button class="btn primary" data-act="liquidi">Aggiorna saldi</button><button class="btn" data-act="contoliq">${IC.plus} Nuovo conto</button></div>
+    <div class="note"><p>Tocca un conto per fargli seguire i movimenti: scrivi una volta il saldo vero e scegli quali modi di pagamento passano da lì (per esempio la carta di debito e i bonifici). Da quel momento entrate, uscite, giroconti e acquisti di titoli pagati da quel conto aggiornano il saldo da soli.</p>
+      <p>Quando controlli la banca e il numero non torna, scrivi il saldo vero: diventa il nuovo punto di partenza. Assumo che i soldi sui conti e quelli da investire siano diversi dai depositi vincolati.</p></div>` };
 };
 ROUTES.ribilancia = () => {
   const R = calc(), rb = R.ribil, c = CF();
@@ -530,24 +578,30 @@ ROUTES.emergenza = () => {
 
 // ---------------------------------------------------------------- Movimenti
 const MS = { ym: ymOf(todayISO()), t: "", q: "", a: "", c: "" };
-function movRow(m) {
+function movRow(m, L) {
+  if (m.t === "g") {
+    const k = L ? effetto(m, L) : 0;
+    return `<button class="row" data-mov="${esc(m.id)}"><span class="ico" style="background:var(--muted)">⇄</span><div><div class="t1">${esc(m.n || "Giroconto")}</div><div class="t2">${esc((m.a || "?") + " → " + (m.a2 || "?"))}</div></div>
+      <div class="r"><div class="amt num ${k > 0 ? "in" : ""}">${k > 0 ? "+" : k < 0 ? "−" : ""}${eur(m.e)}</div>${m.cur ? `<div class="t2 num">${money(m.v, m.cur)}</div>` : ""}</div></button>`;
+  }
   const col = catColor(m.t, m.c), init = m.c.replace(/[^A-Za-zÀ-ú]/g, "").slice(0, 2);
   const t1 = m.n || m.s || m.c, t2 = [m.c + (m.s ? " › " + m.s : ""), m.a].filter(Boolean).join(", ");
+  const uscito = m.t === "u" && m.x != null && Math.abs(m.x - m.e) > 0.004;
   return `<button class="row" data-mov="${esc(m.id)}"><span class="ico" style="background:${col}">${esc(init)}</span><div><div class="t1">${esc(t1)}</div><div class="t2">${esc(t2)}</div></div>
-    <div class="r"><div class="amt num ${m.t === "e" ? "in" : ""}">${m.t === "e" ? "+" : "−"}${eur(m.e)}</div>${m.cur ? `<div class="t2 num">${money(m.v, m.cur)}</div>` : ""}</div></button>`;
+    <div class="r"><div class="amt num ${m.t === "e" ? "in" : ""}">${m.t === "e" ? "+" : "−"}${eur(L && uscito ? m.x : m.e)}</div>${uscito ? `<div class="t2 num">${L ? "tua parte " + eur(m.e) : "dal conto " + eur(m.x)}</div>` : m.cur ? `<div class="t2 num">${money(m.v, m.cur)}</div>` : ""}</div></button>`;
 }
-function dayGroups(list, limit = 400) {
+function dayGroups(list, limit = 400, L) {
   let out = "", last = "", shown = list.slice(0, limit);
-  const dayTot = {}; shown.forEach(m => { const d = m.d.slice(0, 10); dayTot[d] = (dayTot[d] || 0) + (m.t === "e" ? m.e : -m.e); });
-  shown.forEach(m => { const d = m.d.slice(0, 10); if (d !== last) { last = d; const dt = toDate(d); out += `<div class="day"><span>${GIORNI[dt.getDay()]} ${dt.getDate()} ${MESI[dt.getMonth()]}${d.slice(0, 4) !== todayISO().slice(0, 4) ? " " + d.slice(0, 4) : ""}</span><span class="num">${sgn(dayTot[d])}</span></div>`; } out += movRow(m); });
+  const dayTot = {}; shown.forEach(m => { const d = m.d.slice(0, 10); dayTot[d] = (dayTot[d] || 0) + (L ? effetto(m, L) : m.t === "e" ? m.e : m.t === "u" ? -m.e : 0); });
+  shown.forEach(m => { const d = m.d.slice(0, 10); if (d !== last) { last = d; const dt = toDate(d); out += `<div class="day"><span>${GIORNI[dt.getDay()]} ${dt.getDate()} ${MESI[dt.getMonth()]}${d.slice(0, 4) !== todayISO().slice(0, 4) ? " " + d.slice(0, 4) : ""}</span><span class="num">${sgn(dayTot[d])}</span></div>`; } out += movRow(m, L); });
   if (list.length > limit) out += `<div class="empty">Altri ${list.length - limit} movimenti: restringi la ricerca</div>`;
   return out;
 }
 ROUTES.movimenti = () => {
   const q = MS.q.trim().toLowerCase();
-  let list = q ? MV().filter(m => [m.c, m.s, m.n, m.a, m.cur].some(x => x && x.toLowerCase().includes(q)) || String(m.e).includes(q.replace(",", "."))) : mvMonth(MS.ym);
+  let list = q ? MV().filter(m => [m.c, m.s, m.n, m.a, m.a2, m.cur].some(x => x && x.toLowerCase().includes(q)) || String(m.e).includes(q.replace(",", "."))) : mvMonth(MS.ym);
   if (MS.t) list = list.filter(m => m.t === MS.t);
-  if (MS.a) list = list.filter(m => m.a === MS.a);
+  if (MS.a) list = list.filter(m => m.a === MS.a || m.a2 === MS.a);
   const T = totals(list);
   const months = Array.from({ length: 6 }, (_, i) => ymAdd(MS.ym, i - 5));
   const trio = `<div class="trio"><div><span>Entrate</span><b class="num up">${eur(T.e)}</b></div><div><span>Uscite</span><b class="num">${eur(T.u)}</b></div><div><span>Saldo</span><b class="num ${T.s < 0 ? "down" : ""}">${sgn(T.s)}</b></div></div>`;
@@ -558,7 +612,7 @@ ROUTES.movimenti = () => {
       ${barsSVG(months.map(m => { const t = totals(mvMonth(m)); return { label: MESI[+m.slice(5) - 1], title: ymLabel(m), vals: [t.e, t.u], dim: m !== MS.ym, key: "#mmese/" + m }; }), [{ name: "Entrate", color: "var(--up)" }, { name: "Uscite", color: "var(--bar2)" }], { h: 104, label: "Entrate e uscite degli ultimi 6 mesi", hint: "" })}`}
     </section>
     <div class="search"><input id="q" type="search" placeholder="Cerca in tutti i movimenti" value="${esc(MS.q)}" autocomplete="off"></div>
-    <div class="filters"><button data-mt="" aria-pressed="${!MS.t}">Tutti</button><button data-mt="u" aria-pressed="${MS.t === "u"}">Uscite</button><button data-mt="e" aria-pressed="${MS.t === "e"}">Entrate</button>
+    <div class="filters"><button data-mt="" aria-pressed="${!MS.t}">Tutti</button><button data-mt="u" aria-pressed="${MS.t === "u"}">Uscite</button><button data-mt="e" aria-pressed="${MS.t === "e"}">Entrate</button>${MV().some(m => m.t === "g") ? `<button data-mt="g" aria-pressed="${MS.t === "g"}">Giroconti</button>` : ""}
       ${D().conti.map(a => `<button data-ma="${esc(a)}" aria-pressed="${MS.a === a}">${esc(a)}</button>`).join("")}</div>
     <div class="group">${list.length ? dayGroups(list) : `<div class="empty">Nessun movimento ${q ? "trovato" : "in " + ymLabel(MS.ym)}.<br><br><button class="btn primary" data-act="add">${IC.plus} Aggiungi movimento</button></div>`}</div>` };
 };
@@ -836,27 +890,33 @@ let F = null;
 function movForm(id, preset) {
   const m = id ? MV().find(x => x.id === id) : null;
   const now = todayISO();
-  F = m ? { id: m.id, t: m.t, c: m.c, s: m.s || "", a: m.a || "", cur: m.cur || "EUR", v: m.cur ? m.v : m.e, date: m.d.slice(0, 10), time: m.d.slice(11, 16), n: m.n || "", rate: m.cur ? (m.v ? m.e / m.v : fx(m.cur)) : 1 }
-    : Object.assign({ t: "u", c: "", s: "", a: S.pref.conto || D().conti[0] || "", cur: "EUR", v: null, date: now, time: nowHM(), n: "", rate: 1 }, preset || {});
+  F = m ? { id: m.id, t: m.t, c: m.t === "g" ? "" : m.c, s: m.s || "", a: m.a || "", a2: m.a2 || "", x: m.x != null ? m.x : null, cur: m.cur || "EUR", v: m.cur ? m.v : m.e, date: m.d.slice(0, 10), time: m.d.slice(11, 16), n: m.n || "", rate: m.cur ? (m.v ? m.e / m.v : fx(m.cur)) : 1 }
+    : Object.assign({ t: "u", c: "", s: "", a: S.pref.conto || D().conti[0] || "", a2: "", x: null, cur: "EUR", v: null, date: now, time: nowHM(), n: "", rate: 1 }, preset || {});
   F.edit = !!m; drawMF();
 }
-function readMF() { if (!$("#mf")) return; F.v = num("f-v"); F.n = val("f-n"); F.date = val("f-date") || F.date; F.time = val("f-time") || F.time; if ($("#f-rate")) F.rate = num("f-rate") || F.rate; }
+function readMF() { if (!$("#mf")) return; if ($("#f-x")) F.x = num("f-x"); F.v = num("f-v"); F.n = val("f-n"); F.date = val("f-date") || F.date; F.time = val("f-time") || F.time; if ($("#f-rate")) F.rate = num("f-rate") || F.rate; }
 function drawMF(focus) {
-  const cats = catList(F.t), cat = catOf(F.t, F.c), vals = CF().valute || ["EUR"];
+  const cats = F.t === "g" ? [] : catList(F.t), cat = F.t === "g" ? null : catOf(F.t, F.c), vals = CF().valute || ["EUR"];
   const notes = F.c ? [...new Set(MV().filter(m => m.t === F.t && m.c === F.c && m.n).slice(0, 300).map(m => m.n))].slice(0, 30) : [];
   const eurV = F.v != null ? F.v * (F.cur === "EUR" ? 1 : F.rate) : null;
   openSheet(`<form id="mf" autocomplete="off">
-    <div class="seg e" role="group" aria-label="Tipo"><button type="button" data-ft="u" aria-pressed="${F.t === "u"}">Uscita</button><button type="button" class="in" data-ft="e" aria-pressed="${F.t === "e"}">Entrata</button></div>
+    <div class="seg e" role="group" aria-label="Tipo"><button type="button" data-ft="u" aria-pressed="${F.t === "u"}">Uscita</button><button type="button" class="in" data-ft="e" aria-pressed="${F.t === "e"}">Entrata</button><button type="button" data-ft="g" aria-pressed="${F.t === "g"}">Giroconto</button></div>
     <div class="amountbox ${F.t}" style="margin-top:12px"><input id="f-v" inputmode="decimal" placeholder="0,00" value="${F.v != null ? inNum(F.v) : ""}" aria-label="Importo"><select id="f-cur" aria-label="Valuta">${opt(vals, F.cur)}</select></div>
     ${F.cur !== "EUR" ? `<div class="conv" id="f-conv">= <b class="num">${eurV != null ? eur(eurV) : "–"}</b> al cambio <input id="f-rate" inputmode="decimal" value="${inNum(F.rate, 5)}" style="width:90px;padding:4px 6px;border-radius:8px;border:1px solid var(--line);background:var(--bg)"> € per 1 ${esc(F.cur)}</div>` : ""}
+    ${F.t === "g" ? `<div class="fl">Da</div><div class="chips">${nomiConti().concat(ESTERNI).map(a => `<button type="button" data-fa="${esc(a)}" aria-pressed="${F.a === a}">${esc(a)}</button>`).join("")}</div>
+      <div class="fl">A</div><div class="chips">${nomiConti().concat(ESTERNI).map(a => `<button type="button" data-fa2="${esc(a)}" aria-pressed="${F.a2 === a}">${esc(a)}</button>`).join("")}<button type="button" class="add" data-fnew="conto">+ Nuovo</button></div>
+      ${F.newconto ? `<div class="search" style="margin-top:8px"><input id="f-newconto" placeholder="Nome del conto"><button type="button" class="btn" data-fadd="conto">Aggiungi</button></div>` : ""}
+      <div class="note">Un giroconto sposta soldi tra due conti (per esempio un prelievo dal conto ai contanti): cambia i saldi ma non è né un'entrata né un'uscita, e non entra nelle statistiche. "${FUORI}" serve per i soldi anticipati o restituiti nei gruppi, "${INVEST}" per quelli che vanno o tornano da titoli e depositi quando non li registri da lì.</div>` : `
     <div class="fl">Categoria</div>
     <div class="chips">${cats.filter(c => !c.nascosta).map(c => `<button type="button" data-fc="${esc(c.nome)}" aria-pressed="${F.c === c.nome}"><span class="dot" style="background:${c.colore}"></span>${esc(c.nome)}</button>`).join("")}<button type="button" class="add" data-fnew="cat">+ Nuova</button></div>
     ${F.newcat ? `<div class="search" style="margin-top:8px"><input id="f-newcat" placeholder="Nome della nuova categoria"><button type="button" class="btn" data-fadd="cat">Aggiungi</button></div>` : ""}
     ${F.c ? `<div class="fl">Sottocategoria</div><div class="chips"><button type="button" data-fs="" aria-pressed="${!F.s}">Nessuna</button>${(cat ? cat.sub : []).map(s => `<button type="button" data-fs="${esc(s)}" aria-pressed="${F.s === s}">${esc(s)}</button>`).join("")}<button type="button" class="add" data-fnew="sub">+ Nuova</button></div>
       ${F.newsub ? `<div class="search" style="margin-top:8px"><input id="f-newsub" placeholder="Nome della sottocategoria"><button type="button" class="btn" data-fadd="sub">Aggiungi</button></div>` : ""}` : ""}
     <div class="fl">Conto</div>
-    <div class="chips">${D().conti.map(a => `<button type="button" data-fa="${esc(a)}" aria-pressed="${F.a === a}">${esc(a)}</button>`).join("")}<button type="button" class="add" data-fnew="conto">+ Nuovo</button></div>
+    <div class="chips">${nomiConti().map(a => `<button type="button" data-fa="${esc(a)}" aria-pressed="${F.a === a}">${esc(a)}</button>`).join("")}<button type="button" class="add" data-fnew="conto">+ Nuovo</button></div>
     ${F.newconto ? `<div class="search" style="margin-top:8px"><input id="f-newconto" placeholder="Nome del conto"><button type="button" class="btn" data-fadd="conto">Aggiungi</button></div>` : ""}
+    ${contoReale(F.a) ? `<div class="small" style="margin-top:6px">Aggiorna il saldo di ${esc(contoReale(F.a).nome)}</div>` : ""}
+    ${F.t === "u" && F.x != null ? `<div class="form" style="margin-top:8px"><label class="full">Uscito dal conto (quello che hai pagato tu)<input id="f-x" inputmode="decimal" value="${inNum(F.x)}"></label></div>` : ""}`}
     <div class="form"><label>Data<input id="f-date" type="date" value="${esc(F.date)}"></label><label>Ora<input id="f-time" type="time" value="${esc(F.time)}"></label>
       <label class="full">Nota<input id="f-n" value="${esc(F.n)}" list="f-notes" placeholder="Facoltativa"></label><datalist id="f-notes">${notes.map(n => `<option value="${esc(n)}">`).join("")}</datalist>
       <div class="actions full">${F.edit ? `<button type="button" class="btn danger" data-fdel>Elimina</button><button type="button" class="btn" data-fdup>Duplica</button>` : `<button type="button" class="btn" data-close>Annulla</button>`}<button class="btn primary">Salva</button></div></div></form>`);
@@ -870,16 +930,29 @@ function updConv() { readMF(); const c = $("#f-conv b"); if (c) c.textContent = 
 function saveMF(asCopy) {
   readMF();
   if (!F.v || F.v <= 0) return toast("Scrivi l'importo");
-  if (!F.c) return toast("Scegli una categoria");
-  const item = { id: (F.edit && !asCopy) ? F.id : uid("m"), d: (asCopy ? todayISO() + "T" + nowHM() : F.date + "T" + (F.time || "12:00")), t: F.t, c: F.c, e: r2(F.cur === "EUR" ? F.v : F.v * F.rate) };
-  if (F.s) item.s = F.s; if (F.n) item.n = F.n; if (F.a) item.a = F.a;
+  if (F.t === "g" && (!F.a || !F.a2)) return toast("Scegli da quale conto a quale conto");
+  if (F.t === "g" && F.a === F.a2) return toast("Scegli due conti diversi");
+  if (F.t !== "g" && !F.c) return toast("Scegli una categoria");
+  const item = { id: (F.edit && !asCopy) ? F.id : uid("m"), d: (asCopy ? todayISO() + "T" + nowHM() : F.date + "T" + (F.time || "12:00")), t: F.t, c: F.t === "g" ? "Giroconto" : F.c, e: r2(F.cur === "EUR" ? F.v : F.v * F.rate) };
+  if (F.s && F.t !== "g") item.s = F.s; if (F.n) item.n = F.n; if (F.a) item.a = F.a; if (F.t === "g") item.a2 = F.a2;
+  if (F.t === "u" && F.x != null && F.x >= 0) item.x = r2(F.x);
   if (F.cur !== "EUR") { item.cur = F.cur; item.v = r2(F.v); }
-  S.pref.cur = F.cur; S.pref.conto = F.a; save(LS.pref, S.pref);
+  S.pref.cur = F.cur; if (F.t !== "g" && F.a) S.pref.conto = F.a; save(LS.pref, S.pref);
   if (F.cur !== "EUR" && Math.abs(F.rate - fx(F.cur)) > 1e-6) commit({ op: "config", patch: { cambi: Object.assign({}, CF().cambi, { [F.cur]: r2(F.rate * 100000) / 100000 }) } });
   closeSheet(); commit({ op: "mov", item }, asCopy ? "Duplicato con la data di oggi" : "Salvato");
 }
 
+// a deposit that ends: the money goes back to its account. If the deposit is older than the account's written
+// balance, removing it is not enough, so a transfer from "Investimenti" brings the money back.
+function chiudiDeposito(id) {
+  const d = D().depositi.find(x => x.id === id); if (!d) return;
+  const L = (CF().liquidi || []).find(x => x.nome === d.conto);
+  if (L && L.base && !conta(L, d.id, d.inizio)) commit({ op: "mov", item: { id: uid("m"), d: todayISO() + "T" + nowHM(), t: "g", c: "Giroconto", a: INVEST, a2: d.conto, e: d.importo, n: "Fine deposito " + d.nome } });
+  closeSheet(); commit({ op: "deldep", id }, `Deposito chiuso: ${eur(d.importo)} di nuovo su ${d.conto}`);
+}
 // --- investments forms
+// which liquidity account pays (or receives) a purchase or a deposit; only accounts that follow the movements change
+const sceltaConto = (id, scelto, etichetta) => (CF().liquidi || []).length ? `<label class="full">${etichetta}<select id="${id}"><option value="">Nessuno (non cambia i saldi)</option>${opt((CF().liquidi || []).map(l => [l.nome, l.nome + (l.base ? "" : " (saldo a mano)")]), scelto || "")}</select></label>` : "";
 function prezziForm() {
   const R = calc(), tits = D().titoli, any = !ART && tits.some(t => t.ticker);
   openSheet(`<h2>Aggiorna prezzi</h2><div class="small">Scrivi i prezzi di mercato di oggi, come li vedi dalla tua banca. Se a un titolo hai dato il codice di Google Finance, li prendo da lì.</div>
@@ -944,13 +1017,14 @@ function titForm(id) {
   }, () => { commit({ op: "deltitolo", id }, "Titolo eliminato"); location.hash = "#investimenti"; });
 }
 function acqForm(id, tid) {
-  const a = id ? D().acquisti.find(x => x.id === id) : { titolo: tid || (D().titoli[0] || {}).id, data: todayISO(), quote: null, prezzo: null, nota: "" };
+  const a = id ? D().acquisti.find(x => x.id === id) : { titolo: tid || (D().titoli[0] || {}).id, data: todayISO(), quote: null, prezzo: null, nota: "", conto: S.pref.contoAcq || "" };
   const t = () => D().titoli.find(x => x.id === val("a-tit")) || {};
   openSheet(`<h2>${id ? "Modifica acquisto" : "Nuovo acquisto"}</h2><div class="small">Per una vendita scrivi le quote con il meno davanti.</div><form class="form" id="af">
     <label class="full">Titolo<select id="a-tit">${opt(D().titoli.map(x => [x.id, x.breve || x.nome]), a.titolo)}</select></label>
     <label>Data<input id="a-data" type="date" value="${esc(a.data || "")}"></label><label>Quote<input id="a-q" inputmode="decimal" value="${inNum(a.quote)}" required></label>
     <label>Prezzo medio<input id="a-p" inputmode="decimal" value="${inNum(a.prezzo)}" required></label><label>Importo<input id="a-imp" disabled value="${a.quote && a.prezzo ? NF2.format(a.quote * a.prezzo) : ""}"></label>
     <label class="full">Nota<input id="a-nota" value="${esc(a.nota)}" placeholder="es. ordine delle 12:31"></label>
+    ${sceltaConto("a-conto", a.conto, "Pagato dal conto (per una vendita: il conto che riceve)")}
     ${a.quando ? `<div class="note full">Data originale: ${esc(a.quando)}</div>` : ""}
     ${formActions(!!id)}</form>`);
   const upd = () => { const q = num("a-q"), p = num("a-p"); $("#a-imp").value = q && p ? NF2.format(q * p) + " " + (t().valuta || "EUR") : ""; };
@@ -958,6 +1032,8 @@ function acqForm(id, tid) {
   onForm("af", () => {
     const q = num("a-q"), p = num("a-p"); if (!q || !p) { toast("Scrivi quote e prezzo"); return false; }
     const item = Object.assign({}, a, { id: id || uid("a"), titolo: val("a-tit"), data: val("a-data") || null, quote: q, prezzo: p, nota: val("a-nota") });
+    const ct = $("#a-conto") ? val("a-conto") : ""; if (ct) item.conto = ct; else delete item.conto;
+    if (!id) { S.pref.contoAcq = ct; save(LS.pref, S.pref); }
     commit({ op: "acq", item }, "Acquisto salvato");
   }, () => commit({ op: "delacq", id }, "Acquisto eliminato"));
 }
@@ -968,10 +1044,14 @@ function depForm(id) {
     <label>Data inizio<input id="d-ini" type="date" value="${esc(d.inizio)}"></label><label>Scadenza vincolo<input id="d-sca" type="date" value="${esc(d.scadenza || "")}" required></label>
     <label>Importo<input id="d-imp" inputmode="decimal" value="${inNum(d.importo)}" required></label><label>Tasso annuo lordo %<input id="d-tas" inputmode="decimal" value="${d.tasso != null ? inNum(r2(d.tasso * 10000) / 100) : ""}" required></label>
     <label class="check full"><input type="checkbox" id="d-svi" ${d.svincolabile ? "checked" : ""}> Svincolabile prima della scadenza</label>
+    ${sceltaConto("d-conto", d.conto, "Soldi presi dal conto")}
+    ${id && d.conto ? `<button type="button" class="btn full" data-act="depchiudi" data-id="${esc(id)}">Scaduto: rimetti ${eur(d.importo)} su ${esc(d.conto)}</button><div class="note full">Toglie la linea e riporta i soldi sul conto. Gli interessi registrali come entrata.</div>` : ""}
     ${formActions(!!id)}</form>`);
   onForm("df", () => {
     const imp = num("d-imp"), tas = num("d-tas"); if (!imp || tas == null || !val("d-sca")) { toast("Scrivi importo, tasso e scadenza"); return false; }
-    commit({ op: "dep", item: Object.assign({}, d, { id: id || uid("d"), nome: val("d-nome"), inizio: val("d-ini"), scadenza: val("d-sca"), importo: imp, tasso: tas / 100, svincolabile: $("#d-svi").checked }) }, "Deposito salvato");
+    const item = Object.assign({}, d, { id: id || uid("d"), nome: val("d-nome"), inizio: val("d-ini"), scadenza: val("d-sca"), importo: imp, tasso: tas / 100, svincolabile: $("#d-svi").checked });
+    const ct = $("#d-conto") ? val("d-conto") : ""; if (ct) item.conto = ct; else delete item.conto;
+    commit({ op: "dep", item }, "Deposito salvato");
   }, () => commit({ op: "deldep", id }, "Deposito eliminato"));
 }
 function depCfgForm() {
@@ -1007,12 +1087,22 @@ function fondoInfoForm() {
     commit({ op: "fondo", patch: { nome: val("fi-nome"), comparto: val("fi-comp"), ter: (num("fi-ter") || 0) / 100, rendimenti } }, "Salvato"); });
 }
 function liquidiForm() {
-  const L = (CF().liquidi || []).concat([{ id: "", nome: "", valore: null }]);
-  openSheet(`<h2>Saldi dei conti</h2><div class="small">Lascia vuoto il nome per togliere un conto.</div><form class="form" id="lf">
-    ${L.map((l, i) => `<label>Conto<input id="l-n${i}" value="${esc(l.nome)}" placeholder="Nuovo conto"></label><label>Saldo<input id="l-v${i}" inputmode="decimal" value="${inNum(l.valore)}"></label>`).join("")}
+  const sal = saldiConti(), L = (CF().liquidi || []).concat([{ id: "", nome: "", valore: null }]);
+  openSheet(`<h2>Saldi dei conti</h2><div class="small">Scrivi i saldi veri, come li vedi in banca. Lascia vuoto il nome per togliere un conto.</div><form class="form" id="lf">
+    ${L.map((l, i) => `<label>Conto<input id="l-n${i}" value="${esc(l.nome)}" placeholder="Nuovo conto"></label><label>Saldo${l.base ? " (calcolato)" : ""}<input id="l-v${i}" inputmode="decimal" value="${inNum(l.id ? sal[l.id] : null)}"></label>`).join("")}
     <label class="full">Liquidità da investire<input id="l-inv" inputmode="decimal" value="${inNum(CF().daInvestire)}"></label>${formActions()}</form>`);
-  onForm("lf", () => { const liquidi = L.map((l, i) => ({ id: l.id || uid("l"), nome: val("l-n" + i), valore: num("l-v" + i) || 0 })).filter(l => l.nome);
-    commit({ op: "config", patch: { liquidi, daInvestire: num("l-inv") || 0 } }, "Saldi aggiornati"); });
+  onForm("lf", () => {
+    const ora = todayISO() + "T" + nowHM(), diffs = [];
+    const liquidi = L.map((l, i) => {
+      const nome = val("l-n" + i), v = num("l-v" + i) || 0; if (!nome) return null;
+      const x = Object.assign({}, l, { id: l.id || uid("l"), nome });
+      if (l.base) { if (Math.abs(v - sal[l.id]) > 0.004) { diffs.push(nome + " " + sgn(v - sal[l.id])); x.valore = v; x.base = ora; x.inclusi = inclusiAl(ora); } }
+      else x.valore = v;
+      if (l.id && l.nome && nome !== l.nome) commit({ op: "rinliq", old: l.nome, name: nome });
+      return x;
+    }).filter(Boolean);
+    commit({ op: "config", patch: { liquidi, daInvestire: num("l-inv") || 0 } }, diffs.length ? "Saldi corretti: " + diffs.join(", ") : "Saldi aggiornati");
+  });
 }
 function daInvForm() {
   openSheet(`<h2>Liquidità da investire</h2><div class="small">I soldi nuovi che vuoi mettere nei titoli. Con zero vedi solo quanto sei lontano dagli obiettivi.</div><form class="form" id="vf">
@@ -1071,7 +1161,7 @@ function contiForm() {
   const L = D().conti.concat([""]);
   openSheet(`<h2>Conti</h2><div class="small">Come in Money Manager: carta, contanti, Satispay… Cambiando un nome si aggiornano anche i movimenti.</div><form class="form" id="kf">
     ${L.map((a, i) => `<input class="full" id="k-${i}" value="${esc(a)}" placeholder="${a ? "" : "Nuovo conto"}" aria-label="Conto">`).join("")}${formActions()}</form>`);
-  onForm("kf", () => { L.forEach((a, i) => { const v = val("k-" + i); if (a && v && v !== a) commit({ op: "conto", old: a, name: v }); if (a && !v && !MV().some(m => m.a === a)) commit({ op: "delconto", name: a }); if (!a && v) commit({ op: "conto", name: v }); }); toast("Conti salvati"); });
+  onForm("kf", () => { L.forEach((a, i) => { const v = val("k-" + i); if (a && v && v !== a) commit({ op: "conto", old: a, name: v }); if (a && !v && !MV().some(m => m.a === a || m.a2 === a)) commit({ op: "delconto", name: a }); if (!a && v) commit({ op: "conto", name: v }); }); toast("Conti salvati"); });
 }
 function valuteForm() {
   const c = CF(), V = (c.valute || ["EUR"]).filter(v => v !== "EUR").concat([""]);
@@ -1089,6 +1179,49 @@ async function fetchCambi() {
 }
 
 // ---------------------------------------------------------------- Money Manager import (the .xlsx export of the app)
+// one liquidity account: name, true balance and which payment methods pass through it
+function contoLiqForm(id) {
+  const L = id ? CF().liquidi.find(x => x.id === id) : { id: "", nome: "", valore: null, metodi: [], base: "" }, sal = id ? saldiConti()[id] : null;
+  const scelti = new Set(L.metodi || []), metodi = D().conti.filter(n => n !== L.nome);
+  openSheet(`<h2>${id ? esc(L.nome) : "Nuovo conto"}</h2><form class="form" id="lq">
+    <label class="full">Nome<input id="lq-n" value="${esc(L.nome)}" placeholder="es. Conto corrente"></label>
+    <label>Saldo vero<input id="lq-v" inputmode="decimal" value="${inNum(sal)}"></label><label>Alla data<input id="lq-d" type="date" value="${esc((L.base || todayISO()).slice(0, 10))}"></label>
+    <label class="check full"><input type="checkbox" id="lq-segui" ${L.base || !id ? "checked" : ""}> Aggiorna il saldo con i movimenti</label>
+    <div class="full" id="lq-box" ${L.base || !id ? "" : "hidden"}><div class="fl" style="margin-top:0">Modi di pagamento che passano da qui</div>
+      <div class="chips">${metodi.map(n => `<button type="button" data-lqm="${esc(n)}" aria-pressed="${scelti.has(n)}">${esc(n)}</button>`).join("") || `<span class="small">Nessuno: i movimenti useranno direttamente il nome del conto.</span>`}</div>
+      <div class="note">Contano i movimenti con questo conto o con uno di questi modi di pagamento, con data dopo quella del saldo. Contanti, buoni pasto e simili lasciali fuori, oppure fanne un conto a sé.</div></div>
+    ${id ? `<div class="actions full"><button type="button" class="btn" data-act="movconto" data-id="${esc(L.id)}">Vedi i movimenti</button></div>` : ""}
+    ${formActions(!!id)}</form>`);
+  $("#lq-segui").onchange = e => { $("#lq-box").hidden = !e.target.checked; };
+  $$("#lq [data-lqm]").forEach(b => b.onclick = () => { const n = b.dataset.lqm; scelti.has(n) ? scelti.delete(n) : scelti.add(n); b.setAttribute("aria-pressed", scelti.has(n)); });
+  onForm("lq", () => {
+    const nome = val("lq-n"), v = num("lq-v"), segui = $("#lq-segui").checked, dt = val("lq-d") || todayISO();
+    if (!nome) { toast("Scrivi il nome del conto"); return false; }
+    if (v == null) { toast("Scrivi il saldo"); return false; }
+    if ((CF().liquidi || []).some(x => x.id !== L.id && x.nome.toLowerCase() === nome.toLowerCase())) { toast("C'è già un conto con questo nome"); return false; }
+    const x = Object.assign({}, L, { id: L.id || uid("l"), nome, metodi: segui ? [...scelti] : [] });
+    const cambiato = !id || Math.abs(v - sal) > 0.004 || !L.base !== !segui || (L.base || "").slice(0, 10) !== dt;
+    let msg = "Conto salvato";
+    if (!segui) { x.valore = v; delete x.base; delete x.inclusi; }
+    else if (cambiato) { if (id && L.base) msg = `Saldo corretto (${sgn(v - sal)} rispetto al calcolato)`; x.valore = v; x.base = dt === todayISO() ? dt + "T" + nowHM() : dt + "T23:59"; x.inclusi = dt === todayISO() ? inclusiAl(x.base) : []; }
+    if (id && nome !== L.nome) commit({ op: "rinliq", old: L.nome, name: nome });
+    const liquidi = (CF().liquidi || []).filter(y => y.id !== x.id); const pos = (CF().liquidi || []).findIndex(y => y.id === x.id);
+    liquidi.splice(pos < 0 ? liquidi.length : pos, 0, x);
+    commit({ op: "config", patch: { liquidi } }, msg);
+  }, () => commit({ op: "config", patch: { liquidi: CF().liquidi.filter(y => y.id !== L.id) } }, "Conto tolto"));
+}
+// the movements of one account, newest first, with the running balance after the base
+ROUTES.conto = id => {
+  const L = (CF().liquidi || []).find(x => x.id === id); if (!L) return ROUTES.liquidita();
+  const sal = saldiConti()[id], list = MV().filter(m => effetto(m, L) !== 0 || (m.t === "u" && usaConto(L, m.a)));
+  const dopo = L.base ? list.filter(m => conta(L, m.id, m.d)) : [];
+  return { title: L.nome, back: "liquidita", tab: "patrimonio", html: `
+    <section class="hero"><div class="lab"><span>Saldo</span></div><div class="big num">${bigNum(sal)}</div>
+      <div class="small">${L.base ? `Dal ${dmy(L.base.slice(0, 10))}: saldo scritto ${eur(L.valore)}, ${dopo.length} movimenti dopo.` : "Saldo scritto a mano: non segue i movimenti."}</div></section>
+    <div class="actions"><button class="btn primary" data-act="contoliq" data-id="${esc(id)}">Correggi o collega</button></div>
+    <div class="group">${list.length ? dayGroups(list, 300, L) : `<div class="empty">Nessun movimento con questo conto.</div>`}</div>` };
+};
+
 async function importMM(file) {
   if (!window.ExcelJS) return toast("Un momento: sto ancora caricando il lettore Excel");
   toast("Leggo il file…");
@@ -1169,7 +1302,7 @@ async function buildWorkbook() {
     ws.columns.forEach((col, i) => { col.width = i === 0 ? 34 : 16; }); ws.views = [{ state: "frozen", ySplit: 3 }];
   };
   sheetTables().forEach(t => { const o = overrides(t); tab(t.nome, t.titolo, t.h, t.rows, t.f, (ri, ci) => o[ri + "," + ci]); });
-  tab("Movimenti", "Entrate e uscite", ["Data", "Ora", "Tipo", "Categoria", "Sottocategoria", "Nota", "Conto", "Importo €", "Importo in valuta", "Valuta"], MV().map(m => [m.d.slice(0, 10), m.d.slice(11, 16), m.t === "e" ? "Entrata" : "Uscita", m.c, m.s || "", m.n || "", m.a || "", m.e, m.cur ? m.v : "", m.cur || ""]), ["data", "", "", "", "", "", "", "eur", "n", ""]);
+  tab("Movimenti", "Entrate, uscite e giroconti", ["Data", "Ora", "Tipo", "Categoria", "Sottocategoria", "Nota", "Conto", "Verso il conto", "Importo €", "Uscito dal conto €", "Importo in valuta", "Valuta"], MV().map(m => [m.d.slice(0, 10), m.d.slice(11, 16), m.t === "e" ? "Entrata" : m.t === "g" ? "Giroconto" : "Uscita", m.t === "g" ? "" : m.c, m.s || "", m.n || "", m.a || "", m.a2 || "", m.e, m.x != null ? m.x : "", m.cur ? m.v : "", m.cur || ""]), ["data", "", "", "", "", "", "", "", "eur", "eur", "n", ""]);
   tab("Mesi", "Entrate e uscite mese per mese", ["Mese", "Entrate", "Uscite", "Saldo"], mesiRows(), ["", "eur", "eur", "eur"]);
   return new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 }
@@ -1214,12 +1347,42 @@ const persona = pid => S.data ? (D().persone || []).find(p => p.pid === pid) : n
 const aChi = (g, pid, io) => pid === io ? "te" : nomeIn(g, pid, io); // "a te", not "a Tu"
 function nomeIn(g, pid, io) { if (pid === io) return "Tu"; const m = g.membri.find(x => x.pid === pid); return m ? m.nome : "?"; }
 function etichetta(pid) { const p = persona(pid); if (!p) return ""; const dup = (D().persone || []).filter(x => x.nome.toLowerCase() === p.nome.toLowerCase()).length > 1; return p.nome + (p.nota && dup ? " (" + p.nota + ")" : ""); }
-function gruppiTutti() {
-  const mine = S.data ? Object.values(GS.gruppi).map(g => ({ key: "m-" + g.id, g, mio: true, perm: "titolare", io: ioPid() })) : [];
-  const ospite = GS.inviti.filter(x => x.gruppo).map(x => ({ key: "o-" + x.k, g: x.gruppo, mio: false, perm: x.perm, io: x.io, inv: x }));
-  return mine.concat(ospite);
+// Groups in the trash (cest = date) are left out unless asked; for an invited group, archive and trash only touch this device.
+const CESTINO_GG = 30;
+function gruppiTutti(conCestino) {
+  const mine = S.data ? Object.values(GS.gruppi).map(g => ({ key: "m-" + g.id, g, mio: true, perm: "titolare", io: ioPid(), cest: g.cestino || "", arch: !!g.archiviato })) : [];
+  const ospite = GS.inviti.filter(x => x.gruppo).map(x => ({ key: "o-" + x.k, g: x.gruppo, mio: false, perm: x.perm, io: x.io, inv: x, cest: x.cestino || "", arch: x.arch != null ? !!x.arch : !!x.gruppo.archiviato }));
+  const all = mine.concat(ospite);
+  return conCestino ? all : all.filter(G => !G.cest);
 }
-const gruppoDa = key => gruppiTutti().find(x => x.key === key);
+const gruppoDa = key => gruppiTutti(true).find(x => x.key === key);
+const giorniRestano = iso => Math.max(0, CESTINO_GG - Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
+const inPari = G => Object.values(Conti.saldi(G.g)).every(o => Object.values(o).every(x => !x));
+const ultimaSpesa = G => G.g.voci.reduce((m, v) => v.data > m ? v.data : m, "") || String(G.g.creato || (G.inv && G.inv.aggiunto) || "").slice(0, 10);
+function ordina(list) {
+  const alfa = (a, b) => a.g.nome.localeCompare(b.g.nome, "it", { sensitivity: "base" });
+  return list.slice().sort(S.pref.gord === "alfa" ? alfa : (a, b) => ultimaSpesa(b).localeCompare(ultimaSpesa(a)) || alfa(a, b));
+}
+// The person filter: "p:<pid>" for someone in my own data, "n:<name>" for someone only met in groups shared with me.
+function chiOpzioni(all) {
+  const m = new Map(), mie = S.data ? (D().persone || []).filter(p => !p.io) : [];
+  all.forEach(G => G.g.membri.forEach(x => {
+    if (x.pid === G.io) return;
+    let k, label;
+    if (G.mio) { k = "p:" + x.pid; label = etichetta(x.pid) || x.nome; }
+    else { const p = mie.find(q => q.nome.toLowerCase().trim() === x.nome.toLowerCase().trim()); k = p ? "p:" + p.pid : "n:" + x.nome.toLowerCase().trim(); label = p ? etichetta(p.pid) || p.nome : x.nome; }
+    if (!m.has(k)) m.set(k, label);
+  }));
+  return Array.from(m, ([k, label]) => ({ k, label })).sort((a, b) => a.label.localeCompare(b.label, "it", { sensitivity: "base" }));
+}
+function membroCon(G, k) { // which member of this group the filter means, or null
+  if (!k) return null;
+  let nome = k.slice(2);
+  if (k[0] === "p") { if (G.mio) return G.g.membri.some(x => x.pid === nome) ? nome : null; const p = persona(nome); if (!p) return null; nome = p.nome.toLowerCase().trim(); }
+  const x = G.g.membri.find(y => y.pid !== G.io && y.nome.toLowerCase().trim() === nome);
+  return x ? x.pid : null;
+}
+const partiteCon = (G, pid) => miePartite(G).filter(p => p.chi === pid);
 const puoScrivere = G => G && (G.mio || G.perm === "modifica");
 function mioSaldo(G) { const S0 = Conti.saldi(G.g), out = {}; Object.keys(S0).forEach(cur => { const v = S0[cur][G.io] || 0; if (v) out[cur] = v; }); return out; }
 function miePartite(G) { // simplified transfers that involve me
@@ -1243,6 +1406,8 @@ async function caricaGruppi(forza) {
   if (TEST || ART) return;
   if (!forza && Date.now() - GS.caricato < 30000) return;
   GS.caricato = Date.now();
+  const vecchi = GS.inviti.filter(i => i.cestino && !giorniRestano(i.cestino)).map(i => i.k);
+  if (vecchi.length) { GS.inviti = GS.inviti.filter(i => !vecchi.includes(i.k)); GS.coda = GS.coda.filter(x => !vecchi.includes(x.src)); }
   if (S.data && S.cfg.url) {
     try { const j = await api("g_lista"); const m = {}; j.gruppi.forEach(g => { m[g.id] = g; }); GS.gruppi = m; GS.stato = "ok"; GS.coda.filter(x => x.src === "m").forEach(x => { if (GS.gruppi[x.gid]) applicaOpG(GS.gruppi[x.gid], x.op); }); }
     catch (e) { GS.stato = /sconosciuta/i.test(e.message) ? "vecchio" : "rete"; }
@@ -1324,7 +1489,14 @@ function sommario(G) {
   if (!cur.length) return `<div class="t2">in pari</div>`;
   return cur.map(c => S0[c] > 0 ? `<div class="gsal" style="color:${OWED}"><span>ti devono</span><b class="num">${fc(S0[c], c)}</b></div>` : `<div class="gsal" style="color:${OWE}"><span>devi dare</span><b class="num">${fc(-S0[c], c)}</b></div>`).join("");
 }
-function rigaGruppo(G) {
+function rigaGruppo(G, con) {
+  if (con) {
+    const P = partiteCon(G, con), som = {}; P.forEach(p => { som[p.cur] = (som[p.cur] || 0) + p.c; });
+    const nm = esc(nomeIn(G.g, con, G.io));
+    return `<a class="row grow" href="#gruppo/${esc(G.key)}">${icoG(G.g, 46)}<div><div class="t1">${esc(G.g.nome)}</div>
+      ${P.length ? P.map(p => `<div class="t2" style="color:${p.c > 0 ? OWED : OWE}">${p.c > 0 ? `${nm} ti deve ${fc(p.c, p.cur)}` : `Devi ${fc(-p.c, p.cur)} a ${nm}`}</div>`).join("") : `<div class="t2">In pari con ${nm}</div>`}</div>
+      <div class="r">${Object.keys(som).length ? Object.keys(som).map(c => som[c] > 0 ? `<div class="gsal" style="color:${OWED}"><span>ti deve</span><b class="num">${fc(som[c], c)}</b></div>` : `<div class="gsal" style="color:${OWE}"><span>devi dare</span><b class="num">${fc(-som[c], c)}</b></div>`).join("") : `<div class="t2">in pari</div>`}</div></a>`;
+  }
   const P = miePartite(G).slice(0, 3);
   return `<a class="row grow" href="#gruppo/${esc(G.key)}">${icoG(G.g, 46)}<div><div class="t1">${esc(G.g.nome)}</div>
     ${P.map(p => `<div class="t2" style="color:${p.c > 0 ? OWED : OWE}">${p.c > 0 ? `${esc(nomeIn(G.g, p.chi, G.io))} ti deve ${fc(p.c, p.cur)}` : `Devi ${fc(-p.c, p.cur)} a ${esc(aChi(G.g, p.chi, G.io))}`}</div>`).join("")}
@@ -1334,24 +1506,37 @@ function rigaGruppo(G) {
 ROUTES.comuni = () => {
   if (S.data && !D().persone) setTimeout(() => commit({ op: "mig20" }), 0);
   caricaGruppi();
-  const all = gruppiTutti(), attivi = all.filter(G => !G.g.archiviato), arch = all.filter(G => G.g.archiviato);
-  const tot = {}; attivi.forEach(G => { const s0 = mioSaldo(G); Object.keys(s0).forEach(c => { tot[c] = (tot[c] || 0) + s0[c]; }); });
+  const all = gruppiTutti(), cest = gruppiTutti(true).filter(G => G.cest).sort((a, b) => b.cest.localeCompare(a.cest));
+  const opz = chiOpzioni(all), chi = opz.some(o => o.k === GS.chi) ? GS.chi : "", chiNome = chi ? opz.find(o => o.k === chi).label : "";
+  const vis = chi ? all.filter(G => membroCon(G, chi)) : all;
+  const attivi = ordina(vis.filter(G => !G.arch)), arch = ordina(vis.filter(G => G.arch));
+  const tot = {};
+  attivi.forEach(G => { if (chi) partiteCon(G, membroCon(G, chi)).forEach(p => { tot[p.cur] = (tot[p.cur] || 0) + p.c; }); else { const s0 = mioSaldo(G); Object.keys(s0).forEach(c => { tot[c] = (tot[c] || 0) + s0[c]; }); } });
   const ric = Object.keys(tot).filter(c => tot[c] > 0), dar = Object.keys(tot).filter(c => tot[c] < 0);
-  const mine = attivi.filter(G => G.mio), loro = attivi.filter(G => !G.mio);
-  const vuoto = !all.length;
+  const riga = G => rigaGruppo(G, chi ? membroCon(G, chi) : null);
+  const mine = attivi.filter(G => G.mio), loro = attivi.filter(G => !G.mio), pari = chi ? [] : attivi.filter(inPari);
+  const vuoto = !all.length && !cest.length;
   return { title: "Spese comuni", tab: "comuni", html: `
-    ${GS.stato === "vecchio" ? `<div class="callout"><b>Lo script Google è di una versione precedente</b><span>Per le spese comuni aggiorna lo script alla versione 2.0 (guida, "Aggiornare lo script").</span></div>` : ""}
-    <section class="hero"><div class="lab"><span>Nel complesso</span>${GS.coda.length ? `<span>${GS.coda.length} modifiche da salvare</span>` : ""}</div>
-      ${!ric.length && !dar.length ? `<div class="big" style="font-size:32px">Sei in pari</div>` : ""}
-      ${ric.length ? `<div class="tot" style="color:${OWED}"><span>devi ricevere</span><b class="num">${ric.map(c => fc(tot[c], c)).join(" + ")}</b></div>` : ""}
+    ${GS.stato === "vecchio" ? `<div class="callout"><b>Lo script Google è di una versione precedente</b><span>Per le spese comuni aggiorna lo script alla versione 2.1 (guida, "Aggiornare lo script").</span></div>` : ""}
+    <section class="hero"><div class="lab"><span>${chi ? "Con " + esc(chiNome) : "Nel complesso"}</span>${GS.coda.length ? `<span>${GS.coda.length} modifiche da salvare</span>` : ""}</div>
+      ${!ric.length && !dar.length ? `<div class="big" style="font-size:32px">${chi ? "Siete in pari" : "Sei in pari"}</div>` : ""}
+      ${ric.length ? `<div class="tot" style="color:${OWED}"><span>${chi ? "ti deve" : "devi ricevere"}</span><b class="num">${ric.map(c => fc(tot[c], c)).join(" + ")}</b></div>` : ""}
       ${dar.length ? `<div class="tot" style="color:${OWE}"><span>devi dare</span><b class="num">${dar.map(c => fc(-tot[c], c)).join(" + ")}</b></div>` : ""}
-      <div class="small">Le valute non si convertono tra loro.</div></section>
+      <div class="small">${chi ? "Secondo «chi deve a chi» di ogni gruppo. " : ""}Le valute non si convertono tra loro.</div></section>
     <div class="actions">${S.data ? `<button class="btn primary" data-act="nuovogruppo">${IC.plus} Nuovo gruppo</button><button class="btn" data-act="splitwise">Importa da Splitwise</button>` : ""}<button class="btn" data-act="incolla">Ho un link di invito</button>${all.length ? `<button class="btn" data-act="xlscomuni">${IC.dl} Excel</button>` : ""}</div>
     <input type="file" id="swfile" accept=".csv,text/csv" multiple hidden>
     ${vuoto ? `<div class="empty">Ancora nessun gruppo. ${S.data ? "Crea un gruppo per dividere le spese con altre persone, oppure importa i tuoi gruppi da Splitwise." : "Apri il link di invito che ti hanno mandato."}</div>` : ""}
-    ${mine.length ? `<div class="sec-h"><h2>I tuoi gruppi</h2></div><div class="group">${mine.map(rigaGruppo).join("")}</div>` : ""}
-    ${loro.length ? `<div class="sec-h"><h2>Condivisi con te</h2></div><div class="group">${loro.map(rigaGruppo).join("")}</div>` : ""}
-    ${arch.length ? `<details class="arch"><summary>Gruppi archiviati (${arch.length})</summary><div class="group">${arch.map(rigaGruppo).join("")}</div></details>` : ""}` };
+    ${all.length > 1 ? `<div class="gfilt"><select id="gchi" aria-label="Filtra per persona"><option value="">Tutte le persone</option>${opz.map(o => `<option value="${esc(o.k)}" ${o.k === chi ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</select>
+      <div class="seg" role="group" aria-label="Ordine"><button data-gord="data" aria-pressed="${S.pref.gord !== "alfa"}">Ultima spesa</button><button data-gord="alfa" aria-pressed="${S.pref.gord === "alfa"}">A-Z</button></div></div>` : ""}
+    ${chi && !vis.length ? `<div class="empty">Nessun gruppo con ${esc(chiNome)}.</div>` : ""}
+    ${mine.length ? `<div class="sec-h"><h2>I tuoi gruppi</h2></div><div class="group">${mine.map(riga).join("")}</div>` : ""}
+    ${loro.length ? `<div class="sec-h"><h2>Condivisi con te</h2></div><div class="group">${loro.map(riga).join("")}</div>` : ""}
+    ${pari.length ? `<div class="actions"><button class="btn" data-act="archiviapari">Metti in archivio i gruppi in pari (${pari.length})</button></div>` : ""}
+    ${arch.length ? `<details class="arch"><summary>Gruppi archiviati (${arch.length})</summary><div class="group">${arch.map(riga).join("")}</div></details>` : ""}
+    ${cest.length && !chi ? `<details class="arch" id="cestino"><summary>Cestino (${cest.length})</summary><div class="note" style="margin:0 0 8px">I gruppi eliminati restano qui ${CESTINO_GG} giorni: puoi recuperarli. Poi spariscono${S.data ? " (su Drive ne resta una copia nei backup)" : ""}.</div>
+      <div class="group">${cest.map(G => { const n = giorniRestano(G.cest); return `<div class="row" style="grid-template-columns:auto minmax(0,1fr)">${icoG(G.g, 40)}<div><div class="t1">${esc(G.g.nome)}</div>
+        <div class="t2">${G.mio ? "" : "Tolto da questa app. "}${n > 1 ? `Si svuota tra ${n} giorni` : n === 1 ? "Si svuota domani" : "Si svuota oggi"}</div>
+        <div class="chips" style="margin-top:8px"><button type="button" data-act="recupera" data-key="${esc(G.key)}">Recupera</button><button type="button" data-act="svuota" data-key="${esc(G.key)}">Elimina per sempre</button></div></div></div>`; }).join("")}</div></details>` : ""}` };
 };
 
 // ---- one group
@@ -1372,7 +1557,7 @@ ROUTES.gruppo = key => {
   const G = gruppoDa(key);
   if (!G) { caricaGruppi(); return { title: "Gruppo", back: "comuni", tab: "comuni", html: `<div class="empty">Gruppo non trovato. Se è nuovo, aspetta qualche secondo.</div>` }; }
   caricaGruppi();
-  const g = G.g, io = G.io, S0 = Conti.saldi(g), my = mioSaldo(G), T = Conti.chiDeve(g), w = puoScrivere(G) && !(G.inv && G.inv.revocato);
+  const g = G.g, io = G.io, S0 = Conti.saldi(g), my = mioSaldo(G), T = Conti.chiDeve(g), w = puoScrivere(G) && !(G.inv && G.inv.revocato) && !G.cest;
   const q = GS.q.trim().toLowerCase();
   const voci = g.voci.slice().sort((a, b) => b.data.localeCompare(a.data) || (b.t || "").localeCompare(a.t || "")).filter(v => !q || [v.desc, v.cat, v.note].some(x => x && x.toLowerCase().includes(q)) || Conti.fmtCents(v.tot, v.valuta).includes(q));
   let lista = "", mese = "";
@@ -1382,18 +1567,54 @@ ROUTES.gruppo = key => {
   const myLines = Object.keys(my).length ? Object.keys(my).map(c => my[c] > 0 ? `<div class="tot" style="color:${OWED}"><span>ti devono</span><b class="num">${fc(my[c], c)}</b></div>` : `<div class="tot" style="color:${OWE}"><span>devi dare</span><b class="num">${fc(-my[c], c)}</b></div>`).join("") : `<div class="big" style="font-size:28px">${io ? "Sei in pari" : "Tutti in pari"}</div>`;
   return { title: g.nome, back: "comuni", tab: "comuni", fab: w ? "spesa" : null, html: `
     <section class="hero ghero">${icoG(g, 56)}<div>${!io && !G.mio ? `<button class="btn" data-act="chisono" data-key="${esc(key)}">Scegli chi sei</button>` : myLines}
-      <div class="small">${g.membri.length} persone, valuta ${esc(g.valuta)}${g.archiviato ? ", archiviato" : ""}</div></div></section>
+      <div class="small">${g.membri.length} persone, valuta ${esc(g.valuta)}${G.arch ? ", archiviato" : ""}</div></div></section>
+    ${G.cest ? `<div class="callout"><b>Questo gruppo è nel cestino</b><span>${giorniRestano(G.cest) > 0 ? `Si svuota tra ${giorniRestano(G.cest)} giorni.` : "Si svuota oggi."} Recuperalo per modificarlo${G.mio ? " e per far tornare a funzionare gli inviti" : ""}.</span><div class="chips"><button type="button" data-act="recupera" data-key="${esc(key)}">Recupera</button></div></div>` : ""}
     ${!G.mio ? `<div class="callout"><span>${G.inv.revocato ? "<b>Questo invito è stato revocato.</b> Vedi l'ultima copia salvata sul telefono." : `Sei invitato in questo gruppo: ${G.perm === "modifica" ? "puoi aggiungere e modificare le spese" : "puoi solo guardare"}.`} ${io ? `Sei ${esc(g.membri.find(m => m.pid === io)?.nome || "?")}, <a href="#gruppo/${esc(key)}" data-act="chisono" data-key="${esc(key)}">cambia</a>.` : ""}</span></div>` : ""}
     <div class="actions">${w ? `<button class="btn primary" data-act="spesa" data-key="${esc(key)}">${IC.plus} Spesa</button><button class="btn" data-act="pagamento" data-key="${esc(key)}">Registra un pagamento</button>` : ""}
-      <button class="btn" data-act="xlsgruppo" data-key="${esc(key)}">${IC.dl} Excel</button>${G.mio ? `<button class="btn" data-act="inviti" data-key="${esc(key)}">Invita</button><button class="btn" data-act="gruppoform" data-key="${esc(key)}">Gruppo</button>` : ""}</div>
+      <button class="btn" data-act="xlsgruppo" data-key="${esc(key)}">${IC.dl} Excel</button>${G.mio ? `${!G.cest ? `<button class="btn" data-act="inviti" data-key="${esc(key)}">Invita</button><button class="btn" data-act="gruppoform" data-key="${esc(key)}">Gruppo</button>` : ""}` : ""}</div>
     <div class="seg" role="group" aria-label="Vista"><button data-gv="spese" aria-pressed="${vista === "spese"}">Spese</button><button data-gv="saldi" aria-pressed="${vista === "saldi"}">Saldi</button><button data-gv="chi" aria-pressed="${vista === "chi"}">Chi deve a chi</button></div>
     ${vista === "spese" ? `<div class="search"><input id="gq" type="search" placeholder="Cerca nelle spese del gruppo" value="${esc(GS.q)}" autocomplete="off"></div>
       <div class="group">${lista || `<div class="empty">${q ? "Nessuna spesa trovata" : "Ancora nessuna spesa. Tocca + per aggiungerne una."}</div>`}</div>` : ""}
     ${vista === "saldi" ? `<div class="group">${g.membri.map(m => `<div class="row" style="grid-template-columns:auto minmax(0,1fr) auto"><span class="gico" style="width:38px;height:38px;background:var(--raise);color:var(--ink)">${iniz(m.nome)}</span><div class="t1">${esc(m.pid === io ? m.nome + " (tu)" : m.nome)}</div>
       <div class="r">${curs.map(c => { const v = S0[c][m.pid] || 0; return !v ? `<div class="t2">in pari${curs.length > 1 ? " in " + c : ""}</div>` : `<div class="num" style="color:${v > 0 ? OWED : OWE};font-weight:800">${v > 0 ? "riceve " : "deve "}${fc(Math.abs(v), c)}</div>`; }).join("")}</div></div>`).join("")}</div>` : ""}
     ${vista === "chi" ? (curs.some(c => T[c].length) ? curs.filter(c => T[c].length).map(c => `<div class="sec-h"><h2>In ${esc(c)}</h2></div><div class="group">${T[c].map(t => `<div class="row" style="grid-template-columns:minmax(0,1fr) auto"><div><div class="t1">${esc(nomeIn(g, t.da, io))} ${t.da === io ? "dai" : "dà"} ${fc(t.c, c)}</div><div class="t2">a ${esc(aChi(g, t.a, io))}</div></div>
-      ${w ? `<button class="btn" data-act="registra" data-key="${esc(key)}" data-da="${esc(t.da)}" data-a="${esc(t.a)}" data-c="${t.c}" data-cur="${esc(c)}">Registra</button>` : ""}</div>`).join("")}</div>`).join("") + `<div class="note">È il numero minimo di passaggi di soldi per mettere tutti in pari, valuta per valuta.</div>` : `<div class="empty">Tutti in pari.</div>`) : ""}` };
+      ${w ? `<button class="btn" data-act="registra" data-key="${esc(key)}" data-da="${esc(t.da)}" data-a="${esc(t.a)}" data-c="${t.c}" data-cur="${esc(c)}">Registra</button>` : ""}</div>`).join("")}</div>`).join("") + `<div class="note">È il numero minimo di passaggi di soldi per mettere tutti in pari, valuta per valuta.</div>` : `<div class="empty">Tutti in pari.</div>`) : ""}
+    ${!G.cest ? `<div class="actions" style="margin-top:22px"><button class="btn" data-act="archivia" data-key="${esc(key)}">${G.arch ? "Togli dall'archivio" : "Metti in archivio"}</button><button class="btn danger" data-act="cestina" data-key="${esc(key)}">${G.mio ? "Elimina il gruppo" : "Togli da questa app"}</button></div>` : ""}` };
 };
+
+// ---- archive and trash
+function archivia(G, si) {
+  if (G.mio) opG(G, { tipo: "gruppo", patch: { archiviato: si } });
+  else { G.inv.arch = si; persistG(); render(); }
+}
+function cestinaForm(key) {
+  const G = gruppoDa(key); if (!G) return;
+  openSheet(`<h2>${G.mio ? "Eliminare" : "Togliere da questa app"} «${esc(G.g.nome)}»?</h2>
+    <div class="callout" style="margin-top:10px"><span>${G.mio ? `Il gruppo va nel cestino: per ${CESTINO_GG} giorni puoi recuperarlo con tutte le spese, poi sparisce. Intanto nessuno lo può modificare e gli inviti non funzionano.` : `Il gruppo va nel cestino di questa app per ${CESTINO_GG} giorni. Per chi te l'ha condiviso non cambia niente.`}</span></div>
+    <div class="actions" style="margin-top:12px"><button class="btn" data-close>Annulla</button><button class="btn danger" data-act="cestinaok" data-key="${esc(key)}">${G.mio ? "Elimina" : "Togli"}</button></div>`);
+}
+async function cestina(key, dentro) {
+  const G = gruppoDa(key); if (!G) return;
+  if (!G.mio) {
+    if (dentro) G.inv.cestino = new Date().toISOString(); else { delete G.inv.cestino; GS.caricato = 0; }
+    persistG(); closeSheet(); if (dentro) location.hash = "#comuni"; else caricaGruppi(true);
+    return render(), toast(dentro ? `Gruppo nel cestino per ${CESTINO_GG} giorni` : "Gruppo recuperato");
+  }
+  if (GS.coda.some(x => x.src === "m" && x.gid === G.g.id)) return toast("Aspetta che le ultime modifiche siano salvate, poi riprova");
+  try {
+    const j = await api(dentro ? "g_cestina" : "g_ripristina", { gid: G.g.id });
+    GS.gruppi[G.g.id] = j.gruppo; persistG(); closeSheet();
+    if (dentro) location.hash = "#comuni";
+    render(); toast(dentro ? `Gruppo nel cestino: puoi recuperarlo per ${CESTINO_GG} giorni` : "Gruppo recuperato");
+  } catch (e) { toast(e.net ? "Serve la connessione" : /sconosciuta/i.test(e.message) ? "Per il cestino aggiorna lo script Google alla versione 2.1" : e.message); }
+}
+async function svuota(key, b) {
+  if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Tocca ancora: non si potrà recuperare"; return; }
+  const G = gruppoDa(key); if (!G) return;
+  if (!G.mio) { GS.inviti = GS.inviti.filter(i => i.k !== G.inv.k); GS.coda = GS.coda.filter(x => x.src !== G.inv.k); persistG(); render(); return toast("Gruppo tolto per sempre da questa app"); }
+  try { await api("g_svuota", { gid: G.g.id }); delete GS.gruppi[G.g.id]; persistG(); render(); toast("Gruppo eliminato (su Drive resta una copia nei backup)"); }
+  catch (e) { toast(e.net ? "Serve la connessione" : e.message); }
+}
 
 // ---- expense form: who paid, how it is split
 let SF = null;
@@ -1416,6 +1637,15 @@ function readSF() {
   $$("[data-sfu]").forEach(i => { SF.val[i.dataset.sfu] = i.checked ? 1 : 0; });
   $$("[data-sfv]").forEach(i => { const p = i.dataset.sfv; SF.val[p] = SF.metodo === "esatti" ? (Conti.parseCents(i.value) || 0) : SF.metodo === "percentuali" ? Math.round((parseNum(i.value) || 0) * 100) : SF.metodo === "quote" ? Math.max(0, Math.round(parseNum(i.value) || 0)) : SF.val[p]; });
   if ($("#sf-mov")) SF.mov = $("#sf-mov").checked;
+  if ($("#sfm-c")) { SF.mcat = val("sfm-c"); SF.msub = val("sfm-s"); SF.mconto = val("sfm-a"); }
+}
+// the labels of the movement that goes into my own Movimenti, shared by expenses and payments of a group
+const contiMov = () => nomiConti();
+function campiMov(pre, cat, sub, conto, conCategoria) {
+  const C = catOf("u", cat);
+  return `${conCategoria ? `<label>Categoria<select id="${pre}-c">${opt(catList("u").map(c => c.nome), cat)}</select></label>
+    <label>Sottocategoria<select id="${pre}-s"><option value="">Nessuna</option>${opt(C ? C.sub : [], sub)}</select></label>` : ""}
+    <label class="full">Conto<select id="${pre}-a"><option value="">Nessuno</option>${opt(contiMov(), conto)}</select></label>`;
 }
 function calcolaSF() { // returns {pag, quo, err}
   const G = gruppoDa(SF.key), ord = G.g.membri.map(m => m.pid), tot = SF.tot;
@@ -1444,10 +1674,14 @@ function drawSF(focus) {
     <div class="conv" id="sf-st" style="color:${R0.err ? "var(--down)" : "var(--up)"}">${R0.err ? esc(R0.err) : "Il totale torna al centesimo"}</div>
     <div class="form"><label>Data<input id="sf-data" type="date" value="${esc(SF.data)}"></label><label>Categoria<select id="sf-cat"><option value="">Nessuna</option>${opt(cats, SF.cat)}</select></label>
       <label class="full">Note<input id="sf-n" value="${esc(SF.note)}" placeholder="Facoltative"></label>
-      ${G.mio && !SF.id ? `<label class="check full"><input type="checkbox" id="sf-mov" ${SF.mov ? "checked" : ""}> Aggiungi la mia quota ai Movimenti</label>` : ""}
+      ${G.mio && !SF.id ? `<label class="check full"><input type="checkbox" id="sf-mov" ${SF.mov ? "checked" : ""}> Aggiungi ai miei Movimenti</label>
+        ${SF.mov ? `${campiMov("sfm", SF.mcat, SF.msub, SF.mconto, true)}<div class="note full" id="sfm-info"></div>` : ""}` : ""}
       <div class="actions full">${SF.id ? `<button type="button" class="btn danger" data-sfdel>Elimina</button>` : `<button type="button" class="btn" data-close>Annulla</button>`}<button class="btn primary">Salva</button></div></div></form>`);
   $("#sf").onsubmit = ev => { ev.preventDefault(); salvaSF(); };
-  const upd = () => { readSF(); const r = calcolaSF(); $$("[data-sfq]").forEach(b => { b.textContent = r.quo ? fc(r.quo[b.dataset.sfq] || 0, SF.valuta) : ""; }); const st = $("#sf-st"); st.textContent = r.err || "Il totale torna al centesimo"; st.style.color = r.err ? "var(--down)" : "var(--up)"; };
+  const upd = () => { readSF(); const r = calcolaSF(); $$("[data-sfq]").forEach(b => { b.textContent = r.quo ? fc(r.quo[b.dataset.sfq] || 0, SF.valuta) : ""; }); const st = $("#sf-st"); st.textContent = r.err || "Il totale torna al centesimo"; st.style.color = r.err ? "var(--down)" : "var(--up)"; infoMovSF(r); };
+  if ($("#sf-mov")) $("#sf-mov").onchange = () => { readSF(); if (SF.mov && SF.mcat == null) { SF.mcat = catOf("u", SF.cat) ? SF.cat : (catOf("u", S.pref.gcat) ? S.pref.gcat : catOf("u", "Altro") ? "Altro" : (catList("u")[0] || {}).nome); SF.msub = ""; SF.mconto = S.pref.conto || ""; } drawSF(); };
+  if ($("#sfm-c")) $("#sfm-c").onchange = () => { readSF(); SF.msub = ""; drawSF(); };
+  infoMovSF(calcolaSF());
   $$("#sf input").forEach(i => { i.oninput = upd; });
   $("#sf-v").onchange = () => { readSF(); drawSF(); };
   const f = focus && $("#" + focus); if (f) f.focus(); else if (!SF.id) setTimeout(() => { const d = $("#sf-d"); if (d) d.focus(); }, 280);
@@ -1463,13 +1697,30 @@ function salvaSF() {
   const err = Conti.validaVoce(v, G.g.membri.map(m => m.pid)); if (err) return toast(err);
   closeSheet();
   opG(G, { tipo: "voce", voce: v }, SF.id ? "Spesa modificata" : "Spesa aggiunta");
-  const mia = r.quo[G.io] || 0;
-  if (SF.mov && mia > 0 && S.data) {
-    const cat = catOf("u", SF.cat) ? SF.cat : (catOf("u", "Altro") ? "Altro" : catList("u")[0].nome), k = fx(SF.valuta);
-    const item = { id: uid("m"), d: SF.data + "T12:00", t: "u", c: cat, n: SF.desc + " (" + G.g.nome + ")", e: r2(mia / 100 * k) };
-    if (SF.valuta !== "EUR") { item.cur = SF.valuta; item.v = mia / 100; }
-    commit({ op: "mov", item }, "Spesa aggiunta, e la tua quota nei Movimenti");
+  const mia = r.quo[G.io] || 0, pagato = r.pag[G.io] || 0;
+  if (SF.mov && S.data && (mia > 0 || pagato > 0)) {
+    const k = fx(SF.valuta), cat = catOf("u", SF.mcat) ? SF.mcat : (catOf("u", "Altro") ? "Altro" : catList("u")[0].nome), n = SF.desc + " (" + G.g.nome + ")";
+    let item;
+    if (mia > 0) { // my share is the spending; what left my account is what I paid
+      item = { id: uid("m"), d: SF.data + "T12:00", t: "u", c: cat, n, e: r2(mia / 100 * k) };
+      if (SF.msub) item.s = SF.msub;
+      if (pagato !== mia) item.x = r2(pagato / 100 * k);
+      if (SF.valuta !== "EUR") { item.cur = SF.valuta; item.v = mia / 100; }
+    } else { // I paid only for the others: a transfer to the money owed to me
+      item = { id: uid("m"), d: SF.data + "T12:00", t: "g", c: "Giroconto", n, e: r2(pagato / 100 * k), a2: FUORI };
+      if (SF.valuta !== "EUR") { item.cur = SF.valuta; item.v = pagato / 100; }
+    }
+    if (SF.mconto) item.a = SF.mconto;
+    S.pref.gcat = cat; if (SF.mconto) S.pref.conto = SF.mconto; save(LS.pref, S.pref);
+    commit({ op: "mov", item }, "Spesa aggiunta, anche nei tuoi Movimenti");
   }
+}
+function infoMovSF(r) {
+  const el = $("#sfm-info"); if (!el) return;
+  const G = gruppoDa(SF.key), mia = (r.quo || {})[G.io] || 0, pagato = (r.pag || {})[G.io] || 0;
+  el.textContent = !r.quo ? "" : mia > 0
+    ? `Nelle statistiche entra la tua parte, ${fc(mia, SF.valuta)}. ${pagato === mia ? "Dal conto esce lo stesso importo." : `Dal conto esce quello che hai pagato tu, ${fc(pagato, SF.valuta)}${pagato > mia ? "; il resto ti è dovuto nel gruppo" : ""}.`}`
+    : pagato > 0 ? `Non hai una parte: dal conto escono ${fc(pagato, SF.valuta)} come giroconto verso "${FUORI}", senza entrare nelle statistiche.` : "Non hai pagato e non hai una parte: nei Movimenti non va niente.";
 }
 function dettaglioVoce(G, v) {
   const g = G.g;
@@ -1487,7 +1738,11 @@ function pagamentoForm(key, preset, v) {
   openSheet(`<h2>${v ? "Modifica pagamento" : "Registra un pagamento"}</h2><div class="small">Un rimborso tra due persone del gruppo, per esempio "Anna mi ha dato 50 €".</div><form class="form" id="pgf">
     <label>Chi ha dato i soldi<select id="pg-da">${opt(mem, p.da)}</select></label><label>A chi<select id="pg-a">${opt(mem, p.a)}</select></label>
     <label>Importo<input id="pg-c" inputmode="decimal" value="${p.c ? inNum(p.c / 100) : ""}"></label><label>Valuta<select id="pg-v">${opt(valute, p.cur)}</select></label>
-    <label>Data<input id="pg-d" type="date" value="${esc(p.data)}"></label><label>Note<input id="pg-n" value="${esc(p.note)}"></label>${formActions(!!v)}</form>`);
+    <label>Data<input id="pg-d" type="date" value="${esc(p.data)}"></label><label>Note<input id="pg-n" value="${esc(p.note)}"></label>
+    ${G.mio && !v && S.data ? `<label class="check full"><input type="checkbox" id="pg-mov"> Registra anche nei miei Movimenti, se il pagamento è mio</label><div class="full" id="pg-box" hidden><div class="form">${campiMov("pgm", "", "", S.pref.conto || "", false)}</div>
+      <div class="note">Diventa un giroconto tra il conto e "${FUORI}": cambia il saldo del conto ma non entra nelle statistiche, perché è un rimborso.</div></div>` : ""}
+    ${formActions(!!v)}</form>`);
+  if ($("#pg-mov")) $("#pg-mov").onchange = e => { $("#pg-box").hidden = !e.target.checked; };
   onForm("pgf", () => {
     const da = val("pg-da"), a = val("pg-a"), c = Conti.parseCents(val("pg-c"));
     if (da === a) { toast("Chi dà e chi riceve devono essere diversi"); return false; }
@@ -1496,6 +1751,14 @@ function pagamentoForm(key, preset, v) {
     if (val("pg-n")) voce.note = val("pg-n");
     const err = Conti.validaVoce(voce, g.membri.map(m => m.pid)); if (err) { toast(err); return false; }
     opG(G, { tipo: "voce", voce }, v ? "Pagamento modificato" : "Pagamento registrato");
+    if ($("#pg-mov") && $("#pg-mov").checked && (da === G.io || a === G.io)) {
+      const conto = val("pgm-a"), k = fx(voce.valuta), item = { id: uid("m"), d: voce.data + "T12:00", t: "g", c: "Giroconto", e: r2(c / 100 * k), n: "Rimborso " + (da === G.io ? "a " + nomeIn(g, a, G.io) : "da " + nomeIn(g, da, G.io)) + " (" + g.nome + ")" };
+      if (da === G.io) { item.a = conto || ""; item.a2 = FUORI; } else { item.a = FUORI; item.a2 = conto || ""; }
+      if (!item.a) delete item.a; if (!item.a2) delete item.a2;
+      if (voce.valuta !== "EUR") { item.cur = voce.valuta; item.v = c / 100; }
+      if (conto) { S.pref.conto = conto; save(LS.pref, S.pref); }
+      commit({ op: "mov", item }, "Pagamento registrato, anche nei tuoi Movimenti");
+    }
   }, v ? () => opG(G, { tipo: "elimina", vid: v.id }, "Pagamento eliminato") : null);
 }
 
@@ -1542,10 +1805,7 @@ function gruppoForm(key) {
       }
       const pid = uid("p"); commit({ op: "persona", item: { pid, nome: t } }); aggiungi(pid, t);
     };
-    if ($("#gf [data-gdel]")) $("#gf [data-gdel]").onclick = async ev => {
-      const b = ev.currentTarget; if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Tocca ancora: elimina tutto il gruppo"; return; }
-      try { await api("g_elimina", { gid: g.id }); delete GS.gruppi[g.id]; persistG(); closeSheet(); location.hash = "#comuni"; toast("Gruppo eliminato (resta una copia nei backup su Drive)"); } catch (e) { toast(e.message); }
-    };
+    if ($("#gf [data-gdel]")) $("#gf [data-gdel]").onclick = () => cestinaForm(G.key);
     $("#gf").onsubmit = async ev => {
       ev.preventDefault(); keep();
       if (!g.nome) return toast("Scrivi il nome del gruppo");
@@ -1771,13 +2031,14 @@ document.addEventListener("click", async e => {
   // movement form controls
   if (F && t.closest("#mf")) {
     const b = t.closest("button"); if (!b) return;
-    if (b.dataset.ft) { readMF(); F.t = b.dataset.ft; F.c = ""; F.s = ""; return drawMF(); }
+    if (b.dataset.ft) { readMF(); const prima = F.t; F.t = b.dataset.ft; F.c = ""; F.s = ""; if (F.t !== "u") F.x = null; if (F.t === "g" && prima !== "g") { F.a2 = ""; } return drawMF(); }
     if (b.dataset.fc != null) { readMF(); F.c = b.dataset.fc; F.s = ""; F.newcat = false; return drawMF(); }
     if (b.dataset.fs != null) { readMF(); F.s = b.dataset.fs; F.newsub = false; return drawMF(); }
     if (b.dataset.fa != null) { readMF(); F.a = F.a === b.dataset.fa ? "" : b.dataset.fa; F.newconto = false; return drawMF(); }
+    if (b.dataset.fa2 != null) { readMF(); F.a2 = F.a2 === b.dataset.fa2 ? "" : b.dataset.fa2; F.newconto = false; return drawMF(); }
     if (b.dataset.fnew) { readMF(); F["new" + b.dataset.fnew] = true; return drawMF("f-new" + b.dataset.fnew); }
     if (b.dataset.fadd) { const k = b.dataset.fadd, v = val("f-new" + k); readMF(); if (!v) return toast("Scrivi il nome");
-      if (k === "cat") { commit({ op: "catadd", t: F.t, nome: v }); F.c = v; F.s = ""; } if (k === "sub") { commit({ op: "catadd", t: F.t, nome: F.c, sub: v }); F.s = v; } if (k === "conto") { commit({ op: "conto", name: v }); F.a = v; }
+      if (k === "cat") { commit({ op: "catadd", t: F.t, nome: v }); F.c = v; F.s = ""; } if (k === "sub") { commit({ op: "catadd", t: F.t, nome: F.c, sub: v }); F.s = v; } if (k === "conto") { commit({ op: "conto", name: v }); if (F.t === "g") F.a2 = v; else F.a = v; }
       F["new" + k] = false; return drawMF(); }
     if (b.hasAttribute("data-fdel")) { if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Tocca ancora"; return; } closeSheet(); return commit({ op: "delmov", id: F.id }, "Movimento eliminato"); }
     if (b.hasAttribute("data-fdup")) return saveMF(true);
@@ -1798,6 +2059,7 @@ document.addEventListener("click", async e => {
   }
   const vo = t.closest("[data-voce]"); if (vo) { const [k, id] = vo.dataset.voce.split("|"); return spesaForm(k, id); }
   const gv = t.closest("[data-gv]"); if (gv) { GS.vista = gv.dataset.gv; return render(); }
+  const go2 = t.closest("[data-gord]"); if (go2) { S.pref.gord = go2.dataset.gord; save(LS.pref, S.pref); return render(); }
   const mv = t.closest("[data-mov]"); if (mv) return movForm(mv.dataset.mov);
   const go = t.closest("[data-go]"); if (go) { location.hash = go.dataset.go; return; }
   const bg = t.closest(".bg[data-tip]"); if (bg) { const tip = bg.closest(".chart").parentElement.querySelector(".bartip"); if (tip) tip.textContent = bg.dataset.tip; return; }
@@ -1834,6 +2096,10 @@ document.addEventListener("click", async e => {
     xlsgruppo: () => { const G = gruppoDa(act.dataset.key); if (G) excelGruppi([G], "Spese comuni - " + G.g.nome.replace(/[\\/:*?"<>|]/g, "") + ".xlsx"); },
     xlscomuni: () => { const L = gruppiTutti(); if (!L.length) return toast("Nessun gruppo"); excelGruppi(L, "Spese comuni - tutti i gruppi.xlsx"); },
     inviti: () => invitiForm(act.dataset.key), gruppoform: () => gruppoForm(act.dataset.key),
+    archivia: () => { const G = gruppoDa(act.dataset.key); if (!G) return; archivia(G, !G.arch); toast(G.arch ? "Gruppo tolto dall'archivio" : "Gruppo in archivio"); },
+    archiviapari: () => { const L = gruppiTutti().filter(G => !G.arch && inPari(G)); L.forEach(G => archivia(G, true)); toast(`${L.length} gruppi in archivio`); },
+    contoliq: () => contoLiqForm(act.dataset.id), movconto: () => { closeSheet(); location.hash = "#conto/" + act.dataset.id; }, depchiudi: () => chiudiDeposito(act.dataset.id),
+    cestina: () => cestinaForm(act.dataset.key), cestinaok: () => cestina(act.dataset.key, true), recupera: () => cestina(act.dataset.key, false), svuota: () => svuota(act.dataset.key, act),
     togliinvito: () => { const k = act.dataset.k; GS.inviti = GS.inviti.filter(i => i.k !== k); GS.coda = GS.coda.filter(x => x.src !== k); persistG(); render(); toast("Gruppo tolto da questo dispositivo"); },
     setupora: () => { S.guest = false; showSetup(); },
     scrolltit: () => { e.preventDefault(); const x = $("#sec-titoli"); if (x) x.scrollIntoView({ behavior: "smooth", block: "start" }); },
@@ -1847,6 +2113,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") closeSheet()
 document.addEventListener("change", async e => {
   const t = e.target;
   if (t.id === "mmfile" && t.files[0]) { importMM(t.files[0]); t.value = ""; }
+  if (t.id === "gchi") { GS.chi = t.value; return render(); }
   if (t.id === "swfile" && t.files[0]) { const fs = Array.from(t.files); t.value = ""; fs.length > 1 ? importaTanti(fs) : importaSplitwise(fs[0]); }
   if (t.id === "restorefile" && t.files[0]) { try { const data = JSON.parse(await t.files[0].text()); if (!Array.isArray(data.movimenti) || !data.config) throw new Error("Il file non contiene dati validi"); doRestore({ data }, "dal file"); } catch (err) { toast(err.message); } t.value = ""; }
 });

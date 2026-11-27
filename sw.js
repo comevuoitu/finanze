@@ -3,7 +3,7 @@
 // - offline answers come only from this app's own cache, never from another app's.
 // Network first for the app's own files, so a new version shows up at once; Google requests are never cached.
 const PREFIX = "finanze-";
-const CACHE = PREFIX + "v2.0";
+const CACHE = PREFIX + "v2.2";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "lib/exceljs.min.js", "lib/conti.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "Versioni.txt", "GUIDA.md"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => null)))).then(() => self.skipWaiting()));

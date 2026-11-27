@@ -2,6 +2,23 @@ FINANZE - STORICO DELLE VERSIONI
 
 Accanto a ogni versione è indicato se va aggiornato anche lo script su Google (Code.gs).
 
+2.2 (27/11/2026)
+- Conti che seguono i movimenti: in Liquidità scrivi una volta il saldo vero di un conto e scegli quali modi di pagamento passano da lì; entrate, uscite, giroconti, acquisti di titoli e depositi pagati da quel conto aggiornano il saldo, e quindi la liquidità e il patrimonio. Scrivendo di nuovo il saldo vero l'app mostra la differenza e riparte da lì, senza contare niente due volte. Pagina di ogni conto con i suoi movimenti.
+- Nuovo tipo di movimento: Giroconto, tra due conti (per esempio un prelievo). Non entra in entrate, uscite e statistiche. Due voci speciali: "Spese comuni" e "Investimenti".
+- Acquisti di titoli con "Pagato dal conto"; depositi con "Soldi presi dal conto" e il pulsante "Scaduto: rimetti sul conto".
+- Spese comuni: "Aggiungi ai miei Movimenti" con categoria, sottocategoria e conto; nelle statistiche va la tua parte, dal conto esce quello che hai pagato. I pagamenti che ti riguardano possono diventare un giroconto sul conto.
+- Excel: i movimenti hanno le colonne "Verso il conto" e "Uscito dal conto €".
+- Nei dati non cambia niente di quello che c'è: i campi nuovi si aggiungono solo quando li usi.
+Script Google: consigliato aggiornarlo (Code.gs 2.2), ma serve solo al foglio Google di riepilogo, che così mostra bene i giroconti. Senza aggiornarlo l'app funziona lo stesso.
+
+2.1 (26/11/2026)
+- Comuni: filtro per persona. Scegli una persona e vedi solo i gruppi in cui c'è, con il saldo tra te e lei in ogni gruppo e in totale (secondo "chi deve a chi").
+- Ordine dei gruppi: per data dell'ultima spesa oppure in ordine alfabetico. La scelta resta salvata.
+- Archivio più a portata di mano: "Metti in archivio" nella pagina di ogni gruppo e "Metti in archivio i gruppi in pari" nell'elenco.
+- Eliminare un gruppo chiede conferma e lo mette nel Cestino, in fondo a Comuni: per 30 giorni si può recuperare, poi sparisce (su Drive ne resta una copia nei backup). Nel cestino il gruppo non si modifica e gli inviti non funzionano; recuperandolo tornano a funzionare.
+- Per chi è invitato: "Togli da questa app" mette il gruppo nel cestino solo sul suo telefono; per il titolare non cambia niente.
+Script Google: DA AGGIORNARE (Code.gs 2.1). Aggiunge le azioni del cestino; le altre restano uguali.
+
 2.0 (26/11/2026)
 - Nuova sezione Comuni, come Splitwise: gruppi con nome, colore o immagine, valuta e persone; spese pagate da una o più persone e divise in parti uguali, per importi, per percentuali o per quote; pagamenti tra persone; saldi e "chi deve a chi" con il numero minimo di passaggi, valuta per valuta; ricerca; gruppi archiviati; Excel per gruppo e di tutti i gruppi.
 - Conti in centesimi interi: i centesimi che avanzano vanno a chi ha la parte decimale più grande, a parità a chi viene prima nell'elenco del gruppo. Il totale torna sempre al centesimo.
@@ -11,7 +28,7 @@ Accanto a ogni versione è indicato se va aggiornato anche lo script su Google (
 - Patrimonio e Investimenti uniti in un'unica sezione Patrimonio. In basso: Movimenti, Statistiche, +, Comuni, Patrimonio.
 - Convivenza con altre app sullo stesso indirizzo (per esempio nome.github.io): chiavi del browser con il prefisso "finanze." (quelle vecchie "fin." si spostano da sole) e cache con il prefisso "finanze-"; l'app non tocca quelle delle altre app.
 - Nei dati: si aggiunge solo l'elenco delle persone; tutto il resto resta com'è.
-- - Import da Splitwise: legge anche i file in italiano (Data, Descrizione, Bilancio totale, Pagamento) e importa più gruppi in una volta, con la stessa persona in tutti i gruppi e l'archivio automatico dei gruppi in pari.
+- Import da Splitwise: legge anche i file in italiano (Data, Descrizione, Bilancio totale, Pagamento) e importa più gruppi in una volta, con la stessa persona in tutti i gruppi e l'archivio automatico dei gruppi in pari.
 Script Google: DA AGGIORNARE (Code.gs 2.0). Senza aggiornarlo l'app funziona come prima, ma la sezione Comuni avvisa che serve la 2.0.
 
 1.3 (25/11/2026)
